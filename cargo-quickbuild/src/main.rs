@@ -7,6 +7,8 @@ use cargo_lock::{
 
 fn main() -> Result<(), Error> {
     let lockfile = Lockfile::load("Cargo.lock").unwrap();
+    // FIXME: if lockfile.metadata or lockfile.patch contain anything
+    // interesting then explode.
     let tree = lockfile.dependency_tree()?;
     let graph = tree.graph();
 
