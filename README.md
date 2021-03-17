@@ -11,7 +11,7 @@ so that it takes less time to build a new project
 as a user or github actions
 I want to use a global cache of pre-built packages
 so that my builds don't take 10 minutes 
-(this can be solved with
+(this can be solved with decent cache)
 
 
 
@@ -57,3 +57,21 @@ so that my builds don't take 10 minutes
 - `cargo build --package=cratename`
 - make a tarball of target/
 - release it as `cratename-HASH_OF_DEPENDENCY_TREE-rustc_version-arch` on `cargo-quickbuild-releases` repo (should be fine to have a single commit in that repo and tag it will infinity git tags).
+
+
+# pivot triggers
+
+Analyser is part of validation stage. If we find lots of large common subtrees then we can continue with the project. If not then ⏎ or 🚮 .
+* If 30% of all projects depending on tokio could fetch tokio's dependency tree from the same bundle then we're winning.
+* Similar with tide/actix ?
+* Do we discriminate for/against projects that are using dependabot to keep their dependencies in.
+* Do we ignore inactive projects somehow?
+
+
+# Possible pivots
+
+There might be some value in saying "I see you're using $X. Would you like to buy $Y?"
+
+# KPIs (Quantifiable things for later)
+
+Time saved - can't know this yet because we can't build the whole world yet.
