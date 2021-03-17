@@ -1,3 +1,20 @@
+# user journeys
+
+as a rust beginner
+I would like my builds to be fast
+so that I get a good first impression of rust
+
+as an open source contributor (starting on a new project)
+i want to have pre-built packages
+so that it takes less time to build a new project
+
+as a user or github actions
+I want to use a global cache of pre-built packages
+so that my builds don't take 10 minutes 
+(this can be solved with
+
+
+
 # cargo-quickbuild sketch design
 
 ## minimal version of the client:
