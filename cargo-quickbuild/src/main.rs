@@ -5,12 +5,12 @@ use cargo_lock::{
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
-fn get_dependencies(graph: &Graph, node_index: &NodeIndex) -> BTreeSet<Package> {
+fn get_dependencies_including_self(graph: &Graph, node_index: &NodeIndex) -> BTreeSet<Package> {
     let mut deps = BTreeSet::new();
+    deps.insert(graph[*node_index].clone());
     let ns = graph.neighbors(*node_index);
     for n in ns {
-        deps.insert(graph[n].clone());
-        let sub_neighbours = get_dependencies(graph, &n);
+        let sub_neighbours = get_dependencies_including_self(graph, &n);
         deps.extend(sub_neighbours);
     }
     deps
@@ -32,7 +32,7 @@ fn main() -> Result<(), Error> {
 
     for node in tree.nodes().iter() {
         let (dependency, node_index) = node;
-        let deps = get_dependencies(&graph, &node_index);
+        let deps = get_dependencies_including_self(&graph, &node_index);
         let hash = hash_packages(&deps);
 
         println!("{}-{}", dependency.name.as_str(), hash);
@@ -48,7 +48,7 @@ mod test {
     use super::*;
 
     #[test]
-    fn test_get_dependencies() {
+    fn test_get_dependencies_including_self() {
         let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         d.push("../Cargo.lock");
         let lockfile = Lockfile::load(d).unwrap();
@@ -60,9 +60,16 @@ mod test {
             .find(|(dep, _node_index)| dep.name.as_str() == "serde")
             .unwrap();
 
-        let packages = get_dependencies(&graph, &node_index);
+        let packages = get_dependencies_including_self(&graph, &node_index);
 
-        let package_names = vec!["proc-macro2", "quote", "serde_derive", "syn", "unicode-xid"];
+        let package_names = vec![
+            "proc-macro2",
+            "quote",
+            "serde",
+            "serde_derive",
+            "syn",
+            "unicode-xid",
+        ];
 
         assert_eq!(
             packages.iter().map(|d| d.name.as_str()).collect::<Vec<_>>(),
@@ -83,11 +90,11 @@ mod test {
             .find(|(dep, _node_index)| dep.name.as_str() == "serde")
             .unwrap();
 
-        let packages = get_dependencies(&graph, &node_index);
+        let packages = get_dependencies_including_self(&graph, &node_index);
 
         assert_eq!(
             hash_packages(&packages),
-            "c51c852fc6dac97c9cc2d2a68db004d49717dec757cf13662e72100347a2d8f7"
+            "49a34557c50d642266068e73fce9fade25b1238a484ac2bdf60e30506da1f267"
         );
     }
 }
