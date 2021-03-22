@@ -47,19 +47,27 @@ mod test {
 
     use super::*;
 
-    #[test]
-    fn test_get_dependencies_including_self() {
-        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        d.push("../Cargo.lock");
-        let lockfile = Lockfile::load(d).unwrap();
+    fn get_graph() -> Graph {
+        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.push("../Cargo.lock");
+        let lockfile = Lockfile::load(path).unwrap();
         let tree = lockfile.dependency_tree().unwrap();
-        let graph = tree.graph();
-        let (_dep, node_index) = tree
-            .nodes()
-            .iter()
-            .find(|(dep, _node_index)| dep.name.as_str() == "serde")
+        tree.graph().clone()
+    }
+
+    fn get_package_index(graph: &Graph, dependency_name: &str) -> NodeIndex {
+        let node_index = graph
+            .node_indices()
+            .find(|node_index| graph[*node_index].name.as_str() == dependency_name)
             .unwrap();
 
+        node_index.clone()
+    }
+
+    #[test]
+    fn test_get_dependencies_including_self() {
+        let graph = get_graph();
+        let node_index = get_package_index(&graph, "serde");
         let packages = get_dependencies_including_self(&graph, &node_index);
 
         let package_names = vec![
@@ -79,22 +87,30 @@ mod test {
 
     #[test]
     fn test_hash_packages() {
-        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        d.push("../Cargo.lock");
-        let lockfile = Lockfile::load(d).unwrap();
-        let tree = lockfile.dependency_tree().unwrap();
-        let graph = tree.graph();
-        let (_dep, node_index) = tree
-            .nodes()
-            .iter()
-            .find(|(dep, _node_index)| dep.name.as_str() == "serde")
-            .unwrap();
+        let graph = get_graph();
+        let node_index = get_package_index(&graph, "serde");
 
         let packages = get_dependencies_including_self(&graph, &node_index);
 
         assert_eq!(
             hash_packages(&packages),
             "49a34557c50d642266068e73fce9fade25b1238a484ac2bdf60e30506da1f267"
+        );
+    }
+
+    #[test]
+    fn hash_packages_gives_different_values_for_leaf_nodes() {
+        let graph = get_graph();
+        let version_check_node_index = get_package_index(&graph, "version_check");
+        let hashbrown_node_index = get_package_index(&graph, "hashbrown");
+
+        let version_check_packages =
+            get_dependencies_including_self(&graph, &version_check_node_index);
+        let hashbrown_packages = get_dependencies_including_self(&graph, &hashbrown_node_index);
+
+        assert_ne!(
+            hash_packages(&version_check_packages),
+            hash_packages(&hashbrown_packages),
         );
     }
 }
