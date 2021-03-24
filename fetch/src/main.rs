@@ -1,6 +1,15 @@
+use std::error::Error;
 use std::fs::File;
 
-use csv::Position;
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+struct Record {
+    id: String,
+    name: String,
+    has_cargo_toml: bool,
+    has_cargo_lock: bool,
+}
 
 fn get_first_arg() -> Result<std::ffi::OsString, Box<dyn std::error::Error>> {
     match std::env::args_os().nth(1) {
@@ -9,44 +18,30 @@ fn get_first_arg() -> Result<std::ffi::OsString, Box<dyn std::error::Error>> {
     }
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let file_path = get_first_arg()?;
+fn main() -> Result<(), Box<dyn Error>> {
+    let repo_root = get_first_arg()?;
+    let file_path = std::path::Path::new(&repo_root).join("data/github.csv".to_string());
     let file = File::open(file_path)?;
     let mut rdr = csv::Reader::from_reader(file);
 
-    println!(
-        "The number of ALL records in CSV is {}",
-        rdr.records().count()
-    );
+    let records = rdr.deserialize();
 
-    let pos = Position::new();
-    rdr.seek(pos)?;
-    let recs_with_cargo_lock = rdr
-        .records()
-        .filter(|record| &record.as_ref().unwrap()[3] == "true")
-        .collect::<Vec<_>>();
+    let valid_records = records
+        .map(|record: Result<Record, csv::Error>| record.unwrap())
+        .filter(|record| record.has_cargo_lock)
+        .collect::<Vec<Record>>();
 
-    println!(
-        "The number of true records in CSV is {}",
-        recs_with_cargo_lock.iter().count()
-    );
-    for result in rdr.records() {
-        let record = result?;
-        let has_lockfile = &record[3];
-        println!("{:?}", has_lockfile);
+    let repo_root_str = repo_root.to_str().unwrap();
+
+    for record in valid_records {
+        let path = format!("{}/data/{}/Cargo.toml", repo_root_str, record.name);
+
+        println!("The path is {}", path);
+
+        if std::path::Path::new(&path).exists() {
+            continue;
+        }
     }
 
     Ok(())
 }
-
-// fetch function
-// Check that file hasn't been downloaded
-// Grab file and stick in directory
-// main function tokio
-// async reqwest fetch
-// for loop to call fetch function
-// sequential
-
-// other
-// futures unordered (refactored)
-// parrallel
