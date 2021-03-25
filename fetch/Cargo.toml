@@ -7,3 +7,6 @@ edition = "2018"
 [dependencies]
 csv = "1.1.6"
 serde = { version = "1.0.125", features = ["derive"]}
+reqwest = "0.11.2"
+tokio = { tokio = "1.4.0", features = ["full"] }
+tempfile = "3.2.0"
