@@ -24,13 +24,26 @@ async fn fetch_and_write_file(
     repo_root: &str,
     repo: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let branch = "master";
+    let mut branch = "master";
     let target = format!(
         "https://raw.githubusercontent.com/{}/{}/Cargo.lock",
         repo, branch
     );
 
-    let response = reqwest::get(target).await?;
+    let mut response = reqwest::get(&target).await?;
+
+    if !response.status().is_success() {
+        branch = "main";
+        let target = format!(
+            "https://raw.githubusercontent.com/{}/{}/Cargo.lock",
+            repo, branch
+        );
+        response = reqwest::get(&target).await?;
+    }
+
+    if !response.status().is_success() {
+        return Ok(());
+    }
 
     let tmp_dir = Builder::new().tempdir()?;
     let fname = response
@@ -46,7 +59,7 @@ async fn fetch_and_write_file(
     let content = response.text().await?;
     copy(&mut content.as_bytes(), &mut temp_destination)?;
 
-    let perm_directory = format!("{}/data/{}", repo_root, repo);
+    let perm_directory = format!("{}/data/locks/{}", repo_root, repo);
     create_dir_all(&perm_directory)?;
 
     let perm_dest_path = format!("{}/Cargo.lock", &perm_directory);
@@ -74,7 +87,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     let repo_root_str = repo_root.to_str().unwrap();
 
     for record in valid_records {
-        let path = format!("{}/data/{}/Cargo.lock", &repo_root_str, &record.name);
+        let path = format!("{}/data/locks/{}/Cargo.lock", &repo_root_str, &record.name);
         if std::path::Path::new(&path).exists() {
             continue;
         }
