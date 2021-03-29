@@ -9,20 +9,18 @@ use std::{
     path::Path,
 };
 
-fn get_dependencies<'p>(
-    mut deps: BTreeSet<&'p Package>,
-    graph: &'p Graph,
-    node_index: &NodeIndex,
-) -> BTreeSet<&'p Package> {
+fn get_dependencies(graph: &Graph, node_index: &NodeIndex) -> BTreeSet<Package> {
+    let mut deps = BTreeSet::new();
     let ns = graph.neighbors(*node_index);
     for n in ns {
-        deps.insert(&graph[n]);
-        deps = get_dependencies(deps, graph, &n);
+        deps.insert(graph[n].clone());
+        let sub_neighbours = get_dependencies(graph, &n);
+        deps.extend(sub_neighbours);
     }
     deps
 }
 
-fn hash_packages(packages: &BTreeSet<&Package>) -> String {
+fn hash_packages(packages: &BTreeSet<Package>) -> String {
     let mut hasher = Sha256::new();
     let debugged = format!("{:?}", packages);
     hasher.update(debugged);
@@ -38,8 +36,7 @@ fn count_all(counts: &mut BTreeMap<String, u64>, path: &Path) -> Result<(), carg
 
     for node in tree.nodes().iter() {
         let (dependency, node_index) = node;
-        let deps = BTreeSet::new();
-        let deps = get_dependencies(deps, &graph, &node_index);
+        let deps = get_dependencies(&graph, &node_index);
         let hash = hash_packages(&deps);
 
         let full_hash = format!("{}-{}-{}", deps.len(), dependency.name.as_str(), hash);
@@ -58,7 +55,7 @@ fn get_first_arg() -> Result<std::ffi::OsString, Box<dyn std::error::Error>> {
 
 fn track_progress(progress: &mut u64) {
     *progress += 1;
-    // Log at every power of 2
+    // Log every power of 2
     if progress.count_ones() == 1 {
         eprintln!("progress: {}", progress);
     }
