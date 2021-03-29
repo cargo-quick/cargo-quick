@@ -1,7 +1,7 @@
 use futures::stream::StreamExt as _;
-use std::error::Error;
 use std::fs::{create_dir_all, rename, File};
 use std::io::copy;
+use std::{error::Error, time::Duration};
 use tempfile::Builder;
 
 use serde::Deserialize;
@@ -33,6 +33,12 @@ async fn fetch_and_write_file(
 
     let mut response = reqwest::get(&target).await?;
 
+    while response.status() == 429 {
+        println!("hit a rate limit");
+        tokio::time::sleep(Duration::from_secs(5 * 60)).await;
+        response = reqwest::get(&target).await?;
+    }
+
     if !response.status().is_success() {
         branch = "main";
         let target = format!(
@@ -42,8 +48,11 @@ async fn fetch_and_write_file(
         response = reqwest::get(&target).await?;
     }
 
-    if !response.status().is_success() {
+    if response.status() == 404 {
         return Ok(());
+    } else if !response.status().is_success() {
+        dbg!(response);
+        panic!("unexpected status")
     }
 
     let tmp_dir = Builder::new().tempdir()?;
