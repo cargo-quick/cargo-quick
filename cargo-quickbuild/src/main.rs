@@ -1,30 +1,36 @@
 use cargo_lock::{
     dependency::graph::{Graph, NodeIndex},
-    Error, Lockfile, Package,
+    Lockfile, Package,
 };
 use sha2::{Digest, Sha256};
-use std::collections::BTreeSet;
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    error::Error,
+    path::Path,
+};
 
-fn get_dependencies(graph: &Graph, node_index: &NodeIndex) -> BTreeSet<Package> {
-    let mut deps = BTreeSet::new();
+fn get_dependencies<'p>(
+    mut deps: BTreeSet<&'p Package>,
+    graph: &'p Graph,
+    node_index: &NodeIndex,
+) -> BTreeSet<&'p Package> {
     let ns = graph.neighbors(*node_index);
     for n in ns {
-        deps.insert(graph[n].clone());
-        let sub_neighbours = get_dependencies(graph, &n);
-        deps.extend(sub_neighbours);
+        deps.insert(&graph[n]);
+        deps = get_dependencies(deps, graph, &n);
     }
     deps
 }
 
-fn hash_packages(packages: &BTreeSet<Package>) -> String {
+fn hash_packages(packages: &BTreeSet<&Package>) -> String {
     let mut hasher = Sha256::new();
     let debugged = format!("{:?}", packages);
     hasher.update(debugged);
     format!("{:x}", hasher.finalize())
 }
 
-fn main() -> Result<(), Error> {
-    let lockfile = Lockfile::load("Cargo.lock").unwrap();
+fn count_all(counts: &mut BTreeMap<String, u64>, path: &Path) -> Result<(), cargo_lock::Error> {
+    let lockfile = Lockfile::load(path).unwrap();
     // FIXME: if lockfile.metadata or lockfile.patch contain anything
     // interesting then explode.
     let tree = lockfile.dependency_tree()?;
@@ -32,12 +38,44 @@ fn main() -> Result<(), Error> {
 
     for node in tree.nodes().iter() {
         let (dependency, node_index) = node;
-        let deps = get_dependencies(&graph, &node_index);
+        let deps = BTreeSet::new();
+        let deps = get_dependencies(deps, &graph, &node_index);
         let hash = hash_packages(&deps);
 
-        println!("{}-{}", dependency.name.as_str(), hash);
+        let full_hash = format!("{}-{}-{}", deps.len(), dependency.name.as_str(), hash);
+        *counts.entry(full_hash).or_insert(0) += 1;
     }
 
+    Ok(())
+}
+
+fn get_first_arg() -> Result<std::ffi::OsString, Box<dyn std::error::Error>> {
+    match std::env::args_os().nth(1) {
+        None => Err(From::from("expected 1 argument, but got none")),
+        Some(file_path) => Ok(file_path),
+    }
+}
+
+fn track_progress(progress: &mut u64) {
+    *progress += 1;
+    // Log at every power of 2
+    if progress.count_ones() == 1 {
+        eprintln!("progress: {}", progress);
+    }
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
+    let repo_root = get_first_arg()?;
+    let glob = format!("{}/**/Cargo.lock", repo_root.to_str().unwrap());
+    let mut counts: BTreeMap<String, u64> = BTreeMap::new();
+    let mut progress = 0;
+    for entry in globwalk::glob(glob)? {
+        track_progress(&mut progress);
+        count_all(&mut counts, entry?.path())?;
+    }
+    let mut items: Vec<(_, _)> = counts.iter().collect();
+    items.sort_by(|(_k1, count1), (_k2, count2)| count1.cmp(count2));
+    println!("{:#?}", items);
     Ok(())
 }
 
