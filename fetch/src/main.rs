@@ -101,6 +101,12 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
     let repo_root_str = repo_root.to_str().unwrap();
 
-    fetch_batch(repo_root_str, &valid_records).await;
+    let mut futures = vec![];
+    for chunk in valid_records.chunks(1_000) {
+        futures.push(fetch_batch(repo_root_str, chunk));
+    }
+
+    futures::future::join_all(futures).await;
+
     Ok(())
 }
