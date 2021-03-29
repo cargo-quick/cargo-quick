@@ -70,7 +70,7 @@ async fn fetch_and_write_file(
     Ok(())
 }
 
-async fn fetch_batch(repo_root_str: &str, valid_records: Vec<Record>) {
+async fn fetch_batch(repo_root_str: &str, valid_records: &[Record]) {
     for record in valid_records {
         let path = format!("{}/data/locks/{}/Cargo.lock", &repo_root_str, &record.name);
         if std::path::Path::new(&path).exists() {
@@ -101,6 +101,6 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
     let repo_root_str = repo_root.to_str().unwrap();
 
-    fetch_batch(repo_root_str, valid_records).await;
+    fetch_batch(repo_root_str, &valid_records).await;
     Ok(())
 }
