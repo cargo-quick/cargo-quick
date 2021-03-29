@@ -6,6 +6,7 @@ use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
     error::Error,
+    fmt::Debug,
     path::Path,
 };
 
@@ -56,11 +57,11 @@ fn get_first_arg() -> Result<std::ffi::OsString, Box<dyn std::error::Error>> {
     }
 }
 
-fn track_progress(progress: &mut u64) {
+fn track_progress(progress: &mut u64, thing: impl Debug) {
     *progress += 1;
     // Log at every power of 2
     if progress.count_ones() == 1 {
-        eprintln!("progress: {}", progress);
+        eprintln!("progress: {} = {:?}", progress, thing);
     }
 }
 
@@ -69,8 +70,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let glob = format!("{}/**/Cargo.lock", repo_root.to_str().unwrap());
     let mut counts: BTreeMap<String, u64> = BTreeMap::new();
     let mut progress = 0;
-    for entry in globwalk::glob(glob)? {
-        track_progress(&mut progress);
+    for entry in globwalk::glob(glob)?.skip(512 + 8 + 4 + 2) {
+        track_progress(&mut progress, &entry);
         count_all(&mut counts, entry?.path())?;
     }
     let mut items: Vec<(_, _)> = counts.iter().collect();
