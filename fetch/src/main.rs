@@ -46,6 +46,12 @@ async fn fetch_and_write_file(
             repo, branch
         );
         response = reqwest::get(&target).await?;
+
+        while response.status() == 429 {
+            println!("hit a rate limit");
+            tokio::time::sleep(Duration::from_secs(5 * 60)).await;
+            response = reqwest::get(&target).await?;
+        }
     }
 
     if response.status() == 404 {
