@@ -1,7 +1,7 @@
 
 .PHONY: fetch-run
 fetch-run: 
-	(cd fetch && cargo run ~/projects/open-source/rust-repos)
+	(cd fetch && cargo run ~/src/rust-repos)
 
 .PHONY: fetch-check
 fetch-check: 
