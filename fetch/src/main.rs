@@ -84,6 +84,8 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         .filter(|record| record.has_cargo_lock)
         .collect::<Vec<Record>>();
 
+    println!("Valid records count: {}", valid_records.len());
+
     let repo_root_str = repo_root.to_str().unwrap();
 
     for record in valid_records {
