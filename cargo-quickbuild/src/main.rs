@@ -2,6 +2,7 @@ use cargo_lock::{
     dependency::graph::{Graph, NodeIndex},
     Lockfile, Package,
 };
+use petgraph::visit::{VisitMap, Visitable, Walker};
 use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -10,16 +11,10 @@ use std::{
     path::Path,
 };
 
-fn get_dependencies<'p>(
-    mut deps: BTreeSet<&'p Package>,
-    graph: &'p Graph,
-    node_index: &NodeIndex,
-) -> BTreeSet<&'p Package> {
-    let ns = graph.neighbors(*node_index);
-    for n in ns {
-        deps.insert(&graph[n]);
-        deps = get_dependencies(deps, graph, &n);
-    }
+fn get_dependencies<'p>(graph: &'p Graph, node_index: &NodeIndex) -> BTreeSet<&'p Package> {
+    let dfs = petgraph::visit::Dfs::new(&graph, *node_index);
+    let deps: BTreeSet<&Package> = dfs.iter(&graph).map(|i| &graph[i]).collect();
+
     deps
 }
 
@@ -37,10 +32,8 @@ fn count_all(counts: &mut BTreeMap<String, u64>, path: &Path) -> Result<(), carg
     let tree = lockfile.dependency_tree()?;
     let graph = tree.graph();
 
-    for node in tree.nodes().iter() {
-        let (dependency, node_index) = node;
-        let deps = BTreeSet::new();
-        let deps = get_dependencies(deps, &graph, &node_index);
+    for (dependency, node_index) in tree.nodes().iter() {
+        let deps = get_dependencies(graph, node_index);
         let hash = hash_packages(&deps);
 
         let full_hash = format!("{}-{}-{}", deps.len(), dependency.name.as_str(), hash);
@@ -70,7 +63,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let glob = format!("{}/**/Cargo.lock", repo_root.to_str().unwrap());
     let mut counts: BTreeMap<String, u64> = BTreeMap::new();
     let mut progress = 0;
-    for entry in globwalk::glob(glob)?.skip(512 + 8 + 4 + 2) {
+    for entry in globwalk::glob(glob)? {
         track_progress(&mut progress, &entry);
         count_all(&mut counts, entry?.path())?;
     }
