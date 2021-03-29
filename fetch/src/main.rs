@@ -1,3 +1,4 @@
+use futures::stream::StreamExt as _;
 use std::error::Error;
 use std::fs::{create_dir_all, rename, File};
 use std::io::copy;
@@ -70,16 +71,21 @@ async fn fetch_and_write_file(
     Ok(())
 }
 
+async fn fetch_single(repo_root_str: &str, record: &Record) {
+    let path = format!("{}/data/locks/{}/Cargo.lock", &repo_root_str, &record.name);
+    if std::path::Path::new(&path).exists() {
+        return;
+    }
+
+    fetch_and_write_file(repo_root_str, &record.name)
+        .await
+        .unwrap();
+}
+
+#[allow(dead_code)]
 async fn fetch_batch(repo_root_str: &str, valid_records: &[Record]) {
     for record in valid_records {
-        let path = format!("{}/data/locks/{}/Cargo.lock", &repo_root_str, &record.name);
-        if std::path::Path::new(&path).exists() {
-            continue;
-        }
-
-        fetch_and_write_file(repo_root_str, &record.name)
-            .await
-            .unwrap();
+        fetch_single(repo_root_str, record).await
     }
 }
 
@@ -102,11 +108,13 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     let repo_root_str = repo_root.to_str().unwrap();
 
     let mut futures = vec![];
-    for chunk in valid_records.chunks(1_000) {
-        futures.push(fetch_batch(repo_root_str, chunk));
+    for record in valid_records.iter() {
+        futures.push(fetch_single(repo_root_str, record));
     }
-
-    futures::future::join_all(futures).await;
+    futures::stream::iter(futures)
+        .buffer_unordered(100)
+        .collect::<Vec<()>>()
+        .await;
 
     Ok(())
 }
