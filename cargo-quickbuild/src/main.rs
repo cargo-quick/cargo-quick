@@ -2,7 +2,7 @@ use cargo_lock::{
     dependency::graph::{Graph, NodeIndex},
     Lockfile, Package,
 };
-use petgraph::visit::{VisitMap, Visitable, Walker};
+use petgraph::visit::Walker;
 use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -11,7 +11,10 @@ use std::{
     path::Path,
 };
 
-fn get_dependencies<'p>(graph: &'p Graph, node_index: &NodeIndex) -> BTreeSet<&'p Package> {
+fn get_dependencies_including_self<'p>(
+    graph: &'p Graph,
+    node_index: &NodeIndex,
+) -> BTreeSet<&'p Package> {
     let dfs = petgraph::visit::Dfs::new(&graph, *node_index);
     let deps: BTreeSet<&Package> = dfs.iter(&graph).map(|i| &graph[i]).collect();
 
@@ -26,14 +29,14 @@ fn hash_packages(packages: &BTreeSet<&Package>) -> String {
 }
 
 fn count_all(counts: &mut BTreeMap<String, u64>, path: &Path) -> Result<(), cargo_lock::Error> {
-    let lockfile = Lockfile::load(path).unwrap();
+    let lockfile = Lockfile::load(path)?;
     // FIXME: if lockfile.metadata or lockfile.patch contain anything
     // interesting then explode.
     let tree = lockfile.dependency_tree()?;
     let graph = tree.graph();
 
     for (dependency, node_index) in tree.nodes().iter() {
-        let deps = get_dependencies(graph, node_index);
+        let deps = get_dependencies_including_self(graph, node_index);
         let hash = hash_packages(&deps);
 
         let full_hash = format!("{}-{}-{}", deps.len(), dependency.name.as_str(), hash);
@@ -63,9 +66,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     let glob = format!("{}/**/Cargo.lock", repo_root.to_str().unwrap());
     let mut counts: BTreeMap<String, u64> = BTreeMap::new();
     let mut progress = 0;
-    for entry in globwalk::glob(glob)? {
+    for entry in globwalk::glob(glob)?
+    // .skip(8192 + 1024)
+    {
         track_progress(&mut progress, &entry);
-        count_all(&mut counts, entry?.path())?;
+        let entry = entry?;
+        let path = entry.path();
+        count_all(&mut counts, path)
+            .unwrap_or_else(|error| eprintln!("Error in {:?}: {:#?}", path, error));
     }
     let mut items: Vec<(_, _)> = counts.iter().collect();
     items.sort_by(|(_k1, count1), (_k2, count2)| count1.cmp(count2));
@@ -80,7 +88,7 @@ mod test {
     use super::*;
 
     #[test]
-    fn test_get_dependencies() {
+    fn test_get_dependencies_including_self() {
         let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         d.push("../Cargo.lock");
         let lockfile = Lockfile::load(d).unwrap();
@@ -92,9 +100,16 @@ mod test {
             .find(|(dep, _node_index)| dep.name.as_str() == "serde")
             .unwrap();
 
-        let packages = get_dependencies(&graph, &node_index);
+        let packages = get_dependencies_including_self(&graph, &node_index);
 
-        let package_names = vec!["proc-macro2", "quote", "serde_derive", "syn", "unicode-xid"];
+        let package_names = vec![
+            "proc-macro2",
+            "quote",
+            "serde",
+            "serde_derive",
+            "syn",
+            "unicode-xid",
+        ];
 
         assert_eq!(
             packages.iter().map(|d| d.name.as_str()).collect::<Vec<_>>(),
@@ -115,7 +130,7 @@ mod test {
             .find(|(dep, _node_index)| dep.name.as_str() == "serde")
             .unwrap();
 
-        let packages = get_dependencies(&graph, &node_index);
+        let packages = get_dependencies_including_self(&graph, &node_index);
 
         assert_eq!(
             hash_packages(&packages),
