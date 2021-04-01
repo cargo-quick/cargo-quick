@@ -5,6 +5,8 @@ authors = ["David Laban <david.laban@red-badger.com>"]
 edition = "2018"
 
 [dependencies]
+csv = "1.1.6"
+serde = { version = "1.0.125", features = ["derive"]}
 cargo-lock = { version = "6.0.1", features = ["dependency-tree"] }
 petgraph = "*"
 sha2 = "0.9.3"

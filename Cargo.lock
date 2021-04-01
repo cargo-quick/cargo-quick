@@ -84,8 +84,10 @@ name = "cargo-quickbuild"
 version = "0.0.0"
 dependencies = [
  "cargo-lock",
+ "csv",
  "globwalk",
  "petgraph",
+ "serde",
  "sha2",
 ]
 
