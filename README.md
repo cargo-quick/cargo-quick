@@ -23,8 +23,11 @@ so that my builds don't take 10 minutes
 - explode immediately if it's not a debug build, or there are already release assets, or there is a .cargo/config that we should be honouring
 - parse dependency tree using https://crates.io/crates/cargo-lock or similar
 - for each root of the tree, serialise and compute a hash
-  - fetch /cratename-HASH_OF_DEPENDENCY_TREE-rustc_version-arch from github releases of `cargo-quickbuild-releases` repo, and unpack
-  - stretch goal: keep a download cache and/or unpack in a common place and hardlink them into target/
+  - # fetch /cratename-HASH_OF_DEPENDENCY_TREE-rustc_version-arch from github releases of `cargo-quickbuild-releases` repo, and unpack
+  - # stretch goal: keep a download cache and/or unpack in a common place and hardlink them into target/
+  - try to fetch a pre-built pizza base
+  - if success, unpack it and report to stats server
+  - if failure, build from source and report time to stats server
 - if any cache miss happens, POST the full Cargo.lock somewhere.
 
 ## minimal version of the analyser:
@@ -38,6 +41,24 @@ so that my builds don't take 10 minutes
     - stats.count("cratename-HASH_OF_DEPENDENCY_TREE-rustc_version-arch", 1)
     - stats.count("cratename-HASH_OF_DEPENDENCY_TREE-rustc_version-arch-size", size)
     - store the serialised dependency tree in a `cargo-quickbuild-trees` git repo if it doesn't already exist
+
+- assume that compilation pain is proportional to download count
+- TODO: get timings of how long it takes to build a sample of packages
+  - can we assume that build time is the same for all packages (might be no)
+
+We want to optimise
+- minimise cost of storage (TODO: work out how to account for this) - assume that this is proportonal to compilation time, or assume that this is insignificant for now
+- 
+- time saved in total (globally for all users) - compilation (download) count * compilation time
+- minimise cost of compilation - compilation time
+- therefore: maximise time saved globally per unit of compilation cost (time) time - download counts
+
+
+what proportion of package downloads are commodities, and what proportion are niche and need to be bespoke
+
+Focus on just a subset of projects? Just ones that we have checked out locally.
+
+figure out a way to get a handle on time saved globally - how long does the average package take to compile, ignoring its dependencies (most popular 1000 packages).
 
 ## minimal version of the service:
 
