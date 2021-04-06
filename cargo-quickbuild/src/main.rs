@@ -34,7 +34,13 @@ fn hash_packages(packages: &BTreeSet<&Package>) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-fn write_all(writer: &mut csv::Writer<File>, path: &Path) -> Result<(), Box<dyn Error>> {
+fn write_all(
+    writer: &mut csv::Writer<File>,
+    repo_root: &str,
+    repo_name: &str,
+) -> Result<(), Box<dyn Error>> {
+    let path = format!("{}/data/locks/{}/Cargo.lock", repo_root, repo_name);
+    let path = Path::new(&path);
     let lockfile = Lockfile::load(path)?;
     // FIXME: if lockfile.metadata or lockfile.patch contain anything
     // interesting then explode.
@@ -45,20 +51,24 @@ fn write_all(writer: &mut csv::Writer<File>, path: &Path) -> Result<(), Box<dyn 
     // * (optional) stop using tree.nodes() here, and use graph[node_index] to get the dependency
     // * find tokio in the dependency tree
     // * walk only from tokio downwards
-    for (dependency, node_index) in tree.nodes().iter() {
-        // if dependency != tokio: continue
-        // else iterate over tokio's direct children and do the below
-        let deps = get_dependencies_including_self(graph, node_index);
-        let hash = hash_packages(&deps);
+    for (_, node_index) in tree
+        .nodes()
+        .iter()
+        .filter(|(dep, _)| dep.name.as_str() == "tokio")
+    {
+        for neighbor_index in graph.neighbors(*node_index) {
+            let deps = get_dependencies_including_self(graph, &neighbor_index);
+            let hash = hash_packages(&deps);
 
-        writer.serialize(Record {
-            // FIXME: trim off start and end of path so that it looks like burntushi/ripgresp
-            repo_path: path.to_str().unwrap(),
-            hash: &hash,
-            package_name: dependency.name.as_str(),
-            package_version: &dependency.version.to_string(),
-            deps_count: deps.len(),
-        })?;
+            writer.serialize(Record {
+                // FIXME: trim off start and end of path so that it looks like burntushi/ripgresp
+                repo_path: repo_name,
+                hash: &hash,
+                package_name: graph[neighbor_index].name.as_str(),
+                package_version: &graph[neighbor_index].version.to_string(),
+                deps_count: deps.len(),
+            })?;
+        }
     }
 
     Ok(())
@@ -81,8 +91,10 @@ fn track_progress(progress: &mut u64, thing: impl Debug) {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let repo_root = get_first_arg()?;
+    let repo_root = repo_root.to_str().unwrap();
+
     let mut progress = 0;
-    let csv_filename = format!("{}/data/subtrees.csv", repo_root.to_str().unwrap());
+    let csv_filename = format!("{}/data/subtrees.csv", repo_root);
 
     // TODO: do we need to write the column headings?
     File::create(dbg!(&csv_filename))?;
@@ -90,22 +102,17 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let file = File::open(format!(
         "{}/../quickbuild-analytics-data/tokio_roots.txt",
-        repo_root.to_str().unwrap()
+        repo_root
     ))?;
     let buf_reader = BufReader::new(file);
 
     for repo_name in buf_reader.lines() {
-        let path = format!(
-            "{}/data/locks/{}/Cargo.lock",
-            repo_root.to_str().unwrap(),
-            repo_name?
-        );
-        track_progress(&mut progress, &path);
+        let repo_name = repo_name?;
 
-        let path = Path::new(&path);
+        track_progress(&mut progress, &repo_name);
 
-        write_all(&mut writer, &path)
-            .unwrap_or_else(|error| eprintln!("Error in {:?}: {:#?}", path, error));
+        write_all(&mut writer, &repo_root, &repo_name)
+            .unwrap_or_else(|error| eprintln!("Error in {:?}: {:#?}", repo_name, error));
     }
 
     writer.flush()?;
