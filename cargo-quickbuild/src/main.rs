@@ -4,6 +4,8 @@ use cargo_lock::{
 };
 use petgraph::visit::Walker;
 use sha2::{Digest, Sha256};
+use std::io::BufRead;
+use std::io::BufReader;
 use std::{collections::BTreeSet, error::Error, fmt::Debug, fs::File, path::Path};
 
 #[derive(Debug, serde::Serialize)]
@@ -39,7 +41,13 @@ fn write_all(writer: &mut csv::Writer<File>, path: &Path) -> Result<(), Box<dyn 
     let tree = lockfile.dependency_tree()?;
     let graph = tree.graph();
 
+    // TODO:
+    // * (optional) stop using tree.nodes() here, and use graph[node_index] to get the dependency
+    // * find tokio in the dependency tree
+    // * walk only from tokio downwards
     for (dependency, node_index) in tree.nodes().iter() {
+        // if dependency != tokio: continue
+        // else iterate over tokio's direct children and do the below
         let deps = get_dependencies_including_self(graph, node_index);
         let hash = hash_packages(&deps);
 
@@ -73,7 +81,6 @@ fn track_progress(progress: &mut u64, thing: impl Debug) {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let repo_root = get_first_arg()?;
-    let glob = format!("{}/**/Cargo.lock", repo_root.to_str().unwrap());
     let mut progress = 0;
     let csv_filename = format!("{}/data/subtrees.csv", repo_root.to_str().unwrap());
 
@@ -81,11 +88,23 @@ fn main() -> Result<(), Box<dyn Error>> {
     File::create(dbg!(&csv_filename))?;
     let mut writer = csv::Writer::from_path(csv_filename).unwrap();
 
-    for entry in globwalk::glob(glob)? {
-        track_progress(&mut progress, &entry);
-        let entry = entry?;
-        let path = entry.path();
-        write_all(&mut writer, path)
+    let file = File::open(format!(
+        "{}/../quickbuild-analytics-data/tokio_roots.txt",
+        repo_root.to_str().unwrap()
+    ))?;
+    let buf_reader = BufReader::new(file);
+
+    for repo_name in buf_reader.lines() {
+        let path = format!(
+            "{}/data/locks/{}/Cargo.lock",
+            repo_root.to_str().unwrap(),
+            repo_name?
+        );
+        track_progress(&mut progress, &path);
+
+        let path = Path::new(&path);
+
+        write_all(&mut writer, &path)
             .unwrap_or_else(|error| eprintln!("Error in {:?}: {:#?}", path, error));
     }
 

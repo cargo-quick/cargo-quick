@@ -106,7 +106,7 @@ async fn fetch_batch(repo_root_str: &str, valid_records: &[Record]) {
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn Error>> {
-    let repo_root = get_first_arg()?;
+    let repo_root = dbg!(get_first_arg()?);
     let file_path = std::path::Path::new(&repo_root).join("data/github.csv".to_string());
     let file = File::open(file_path)?;
     let mut rdr = csv::Reader::from_reader(file);
