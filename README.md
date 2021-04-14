@@ -1,4 +1,9 @@
-# user journeys
+# Cargo Quickbuild
+
+`cargo-quickbuild` is a project idea that came out of discussions around [cargo-quickinstall](https://github.com/alsuren/cargo-quickinstall/). The grand plan is that you can say `cargo quickbuild` (or `cargo quickrun` or `cargo quicktest`?) and it will call out to a service to fetch precompiled assets for dependencies, and then hand off to the non-quick version of the cargo command to finish the job. It is probably a moon-shot, so we're doing a bunch of analysis before we start, to get an idea of how viable it is.
+
+
+# User Stories
 
 as a rust beginner
 I would like my builds to be fast
@@ -8,11 +13,35 @@ as an open source contributor (starting on a new project)
 i want to have pre-built packages
 so that it takes less time to build a new project
 
-as a user or github actions
+as a user of github actions
 I want to use a global cache of pre-built packages
 so that my builds don't take 10 minutes 
 (this can be solved with decent cache)
 
+
+# Extended Pizza Analogy
+
+This analogy came up in a meeting between David, Matt, and Zed (two developers and an insights person), and fleshed out over time. If you're wondering why we're constantly talking about pizza, this is why.
+
+* MHRA is like a pizza shop where pizzas are made
+* there are many chefs working in the MHRA pizza shop and there are many pizza shops doing similar work to MHRA
+* a pizza (backend web server) has cheese (http library) and pizza base (database library)
+  * pizza base has dough (low-level database library)
+    * dough has flour (network library), salt (encryption library) and yeast (database query formatter) 
+  * cheese has milk (http library) and salt (same encryption library)
+* *but*
+  * there are lots of different ways to make pizza base
+    * there are lots of different ways to make flour
+    * there are lots of different ways to make yeast
+  * there are lots of different ways to make cheese
+    * there are lots of different ways to make milk
+    * there are lots of different ways to make salt
+* it costs money to *pre-make different types of* dough, cheese and pizza base so we want to only *pre-make* the ingredients for the pizzas that people want
+* everything pre-built has a shelf life of 6 weeks (trust me on this one)
+* *so*
+* We want to pre-make only the most popular ingredients to maximise the *amount of time saved by* chefs making pizzas
+* and then we can have quick pizza in rust land for the masses and no one needs to go hungry again
+* ...does that make sense??"
 
 
 # cargo-quickbuild sketch design
