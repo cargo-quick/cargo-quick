@@ -7,7 +7,7 @@ use tempfile::Builder;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
-struct Record {
+struct RepoRecord {
     id: String,
     name: String,
     has_cargo_toml: bool,
@@ -86,45 +86,48 @@ async fn fetch_and_write_file(
     Ok(())
 }
 
-async fn fetch_single(repo_root_str: &str, record: &Record) {
-    let path = format!("{}/data/locks/{}/Cargo.lock", &repo_root_str, &record.name);
+async fn fetch_single(rust_repos_dir: &str, repo_record: &RepoRecord) {
+    let path = format!(
+        "{}/data/locks/{}/Cargo.lock",
+        &rust_repos_dir, &repo_record.name
+    );
     if std::path::Path::new(&path).exists() {
         return;
     }
 
-    fetch_and_write_file(repo_root_str, &record.name)
+    fetch_and_write_file(rust_repos_dir, &repo_record.name)
         .await
         .unwrap();
 }
 
 #[allow(dead_code)]
-async fn fetch_batch(repo_root_str: &str, valid_records: &[Record]) {
-    for record in valid_records {
-        fetch_single(repo_root_str, record).await
+async fn fetch_batch(rust_repos_dir: &str, valid_repo_records: &[RepoRecord]) {
+    for repo_record in valid_repo_records {
+        fetch_single(rust_repos_dir, repo_record).await
     }
 }
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn Error>> {
-    let repo_root = dbg!(get_first_arg()?);
-    let file_path = std::path::Path::new(&repo_root).join("data/github.csv".to_string());
-    let file = File::open(file_path)?;
-    let mut rdr = csv::Reader::from_reader(file);
+    let rust_repos_dir = get_first_arg()?;
+    let rust_repos_dir = rust_repos_dir.to_str().unwrap();
+    let repo_list_csv_path =
+        std::path::Path::new(&rust_repos_dir).join("data/github.csv".to_string());
 
-    let records = rdr.deserialize();
+    let file = File::open(repo_list_csv_path)?;
+    let mut reader = csv::Reader::from_reader(file);
+    let repo_records = reader.deserialize();
 
-    let valid_records = records
-        .map(|record: Result<Record, csv::Error>| record.unwrap())
-        .filter(|record| record.has_cargo_lock)
-        .collect::<Vec<Record>>();
+    let valid_repo_records = repo_records
+        .map(|repo_record: Result<RepoRecord, csv::Error>| repo_record.unwrap())
+        .filter(|repo_record| repo_record.has_cargo_lock)
+        .collect::<Vec<RepoRecord>>();
 
-    println!("Valid records count: {}", valid_records.len());
-
-    let repo_root_str = repo_root.to_str().unwrap();
+    println!("Valid repo records count: {}", valid_repo_records.len());
 
     let mut futures = vec![];
-    for record in valid_records.iter() {
-        futures.push(fetch_single(repo_root_str, record));
+    for repo_record in valid_repo_records.iter() {
+        futures.push(fetch_single(rust_repos_dir, repo_record));
     }
     futures::stream::iter(futures)
         .buffer_unordered(100)

@@ -36,10 +36,10 @@ fn hash_packages(packages: &BTreeSet<&Package>) -> String {
 
 fn write_all(
     writer: &mut csv::Writer<File>,
-    repo_root: &str,
+    rust_repos_dir: &str,
     repo_name: &str,
 ) -> Result<(), Box<dyn Error>> {
-    let path = format!("{}/data/locks/{}/Cargo.lock", repo_root, repo_name);
+    let path = format!("{}/data/locks/{}/Cargo.lock", rust_repos_dir, repo_name);
     let path = Path::new(&path);
     let lockfile = Lockfile::load(path)?;
     // FIXME: if lockfile.metadata or lockfile.patch contain anything
@@ -90,18 +90,18 @@ fn track_progress(progress: &mut u64, thing: impl Debug) {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let repo_root = get_first_arg()?;
-    let repo_root = repo_root.to_str().unwrap();
-
     let mut progress = 0;
-    let csv_filename = format!("{}/data/subtrees.csv", repo_root);
+    let rust_repos_dir = get_first_arg()?;
+    let rust_repos_dir = rust_repos_dir.to_str().unwrap();
 
-    File::create(dbg!(&csv_filename))?;
-    let mut writer = csv::Writer::from_path(csv_filename).unwrap();
+    let output_csv_filename = format!("{}/data/subtrees.csv", rust_repos_dir);
+
+    File::create(dbg!(&output_csv_filename))?;
+    let mut writer = csv::Writer::from_path(output_csv_filename).unwrap();
 
     let file = File::open(format!(
         "{}/../quickbuild-analytics-data/tokio_roots.txt",
-        repo_root
+        rust_repos_dir
     ))?;
     let buf_reader = BufReader::new(file);
 
@@ -110,7 +110,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         track_progress(&mut progress, &repo_name);
 
-        write_all(&mut writer, &repo_root, &repo_name)
+        write_all(&mut writer, &rust_repos_dir, &repo_name)
             .unwrap_or_else(|error| eprintln!("Error in {:?}: {:#?}", repo_name, error));
     }
 
