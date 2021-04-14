@@ -1,5 +1,8 @@
 [workspace]
 members = [
-    "cargo-quickbuild",
-    "fetch"
+    "fetch",
+    "breakdown",
 ]
+
+[profile.release]
+debug = true

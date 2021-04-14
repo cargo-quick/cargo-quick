@@ -37,6 +37,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "breakdown"
+version = "0.0.0"
+dependencies = [
+ "cargo-lock",
+ "csv",
+ "globwalk",
+ "petgraph",
+ "serde",
+ "sha2",
+]
+
+[[package]]
 name = "bstr"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -77,18 +89,6 @@ dependencies = [
  "serde",
  "toml",
  "url",
-]
-
-[[package]]
-name = "cargo-quickbuild"
-version = "0.0.0"
-dependencies = [
- "cargo-lock",
- "csv",
- "globwalk",
- "petgraph",
- "serde",
- "sha2",
 ]
 
 [[package]]
