@@ -96,7 +96,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut progress = 0;
     let csv_filename = format!("{}/data/subtrees.csv", repo_root);
 
-    // TODO: do we need to write the column headings?
     File::create(dbg!(&csv_filename))?;
     let mut writer = csv::Writer::from_path(csv_filename).unwrap();
 
