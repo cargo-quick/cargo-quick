@@ -41,7 +41,6 @@ This analogy came up in a meeting between David, Matt, and Zed (two developers a
 * *so*
 * We want to pre-make only the most popular ingredients to maximise the *amount of time saved by* chefs making pizzas
 * and then we can have quick pizza in rust land for the masses and no one needs to go hungry again
-* ...does that make sense??"
 
 
 # cargo-quickbuild sketch design
