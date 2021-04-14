@@ -114,9 +114,9 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     let repo_list_csv_path =
         std::path::Path::new(&rust_repos_dir).join("data/github.csv".to_string());
 
-    let file = File::open(repo_list_csv_path)?;
-    let mut reader = csv::Reader::from_reader(file);
-    let repo_records = reader.deserialize();
+    let csv_file = File::open(repo_list_csv_path)?;
+    let mut csv_reader = csv::Reader::from_reader(csv_file);
+    let repo_records = csv_reader.deserialize();
 
     let valid_repo_records = repo_records
         .map(|repo_record: Result<RepoRecord, csv::Error>| repo_record.unwrap())

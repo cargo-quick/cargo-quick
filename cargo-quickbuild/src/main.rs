@@ -3,13 +3,21 @@ use cargo_lock::{
     Lockfile, Package,
 };
 use petgraph::visit::Walker;
+use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use std::io::BufRead;
-use std::io::BufReader;
 use std::{collections::BTreeSet, error::Error, fmt::Debug, fs::File, path::Path};
 
+// FIXME: this is copy-pasted from fetch/main.rs. Maybe make a shared `interfaces` crate?
+#[derive(Debug, Deserialize)]
+struct RepoRecord {
+    id: String,
+    name: String,
+    has_cargo_toml: bool,
+    has_cargo_lock: bool,
+}
+
 #[derive(Debug, serde::Serialize)]
-struct Record<'a> {
+struct SubtreeRecord<'a> {
     repo_path: &'a str,
     hash: &'a str,
     package_name: &'a str,
@@ -41,6 +49,9 @@ fn write_all(
 ) -> Result<(), Box<dyn Error>> {
     let path = format!("{}/data/locks/{}/Cargo.lock", rust_repos_dir, repo_name);
     let path = Path::new(&path);
+    if !path.exists() {
+        return Ok(());
+    };
     let lockfile = Lockfile::load(path)?;
     // FIXME: if lockfile.metadata or lockfile.patch contain anything
     // interesting then explode.
@@ -60,8 +71,7 @@ fn write_all(
             let deps = get_dependencies_including_self(graph, &neighbor_index);
             let hash = hash_packages(&deps);
 
-            writer.serialize(Record {
-                // FIXME: trim off start and end of path so that it looks like burntushi/ripgresp
+            writer.serialize(SubtreeRecord {
                 repo_path: repo_name,
                 hash: &hash,
                 package_name: graph[neighbor_index].name.as_str(),
@@ -94,24 +104,27 @@ fn main() -> Result<(), Box<dyn Error>> {
     let rust_repos_dir = get_first_arg()?;
     let rust_repos_dir = rust_repos_dir.to_str().unwrap();
 
+    let repo_list_csv_path =
+        std::path::Path::new(&rust_repos_dir).join("data/github.csv".to_string());
     let output_csv_filename = format!("{}/data/subtrees.csv", rust_repos_dir);
+
+    let csv_file = File::open(repo_list_csv_path)?;
+    let mut csv_reader = csv::Reader::from_reader(csv_file);
+    let repo_records = csv_reader.deserialize::<RepoRecord>();
 
     File::create(dbg!(&output_csv_filename))?;
     let mut writer = csv::Writer::from_path(output_csv_filename).unwrap();
 
-    let file = File::open(format!(
-        "{}/../quickbuild-analytics-data/tokio_roots.txt",
-        rust_repos_dir
-    ))?;
-    let buf_reader = BufReader::new(file);
+    for repo_record in repo_records {
+        let repo_record = repo_record?;
+        if !repo_record.has_cargo_lock {
+            continue;
+        }
 
-    for repo_name in buf_reader.lines() {
-        let repo_name = repo_name?;
+        track_progress(&mut progress, &repo_record.name);
 
-        track_progress(&mut progress, &repo_name);
-
-        write_all(&mut writer, &rust_repos_dir, &repo_name)
-            .unwrap_or_else(|error| eprintln!("Error in {:?}: {:#?}", repo_name, error));
+        write_all(&mut writer, &rust_repos_dir, &repo_record.name)
+            .unwrap_or_else(|error| eprintln!("Error in {:?}: {:#?}", repo_record.name, error));
     }
 
     writer.flush()?;
