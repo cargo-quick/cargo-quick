@@ -137,19 +137,27 @@ mod test {
 
     use super::*;
 
-    #[test]
-    fn test_get_dependencies_including_self() {
-        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        d.push("../Cargo.lock");
-        let lockfile = Lockfile::load(d).unwrap();
+    fn get_graph() -> Graph {
+        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.push("../Cargo.lock");
+        let lockfile = Lockfile::load(path).unwrap();
         let tree = lockfile.dependency_tree().unwrap();
-        let graph = tree.graph();
-        let (_dep, node_index) = tree
-            .nodes()
-            .iter()
-            .find(|(dep, _node_index)| dep.name.as_str() == "serde")
+        tree.graph().clone()
+    }
+
+    fn get_package_index(graph: &Graph, dependency_name: &str) -> NodeIndex {
+        let node_index = graph
+            .node_indices()
+            .find(|node_index| graph[*node_index].name.as_str() == dependency_name)
             .unwrap();
 
+        node_index.clone()
+    }
+
+    #[test]
+    fn test_get_dependencies_including_self() {
+        let graph = get_graph();
+        let node_index = get_package_index(&graph, "serde");
         let packages = get_dependencies_including_self(&graph, &node_index);
 
         let package_names = vec![
@@ -169,22 +177,32 @@ mod test {
 
     #[test]
     fn test_hash_packages() {
-        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        d.push("../Cargo.lock");
-        let lockfile = Lockfile::load(d).unwrap();
-        let tree = lockfile.dependency_tree().unwrap();
-        let graph = tree.graph();
-        let (_dep, node_index) = tree
-            .nodes()
-            .iter()
-            .find(|(dep, _node_index)| dep.name.as_str() == "serde")
-            .unwrap();
+        let graph = get_graph();
+        let node_index = get_package_index(&graph, "serde");
 
         let packages = get_dependencies_including_self(&graph, &node_index);
 
+        // FIXME: don't rely on debug representation of Package for the hash.
+        // I'm not convinced that it's stable.
         assert_eq!(
             hash_packages(&packages),
-            "c51c852fc6dac97c9cc2d2a68db004d49717dec757cf13662e72100347a2d8f7"
+            "adb262a5beec5a7c0740a7e1129fadab5a5be28b846cd7be59f7d46582092be4"
+        );
+    }
+
+    #[test]
+    fn hash_packages_gives_different_values_for_leaf_nodes() {
+        let graph = get_graph();
+        let version_check_node_index = get_package_index(&graph, "version_check");
+        let hashbrown_node_index = get_package_index(&graph, "hashbrown");
+
+        let version_check_packages =
+            get_dependencies_including_self(&graph, &version_check_node_index);
+        let hashbrown_packages = get_dependencies_including_self(&graph, &hashbrown_node_index);
+
+        assert_ne!(
+            hash_packages(&version_check_packages),
+            hash_packages(&hashbrown_packages),
         );
     }
 }
