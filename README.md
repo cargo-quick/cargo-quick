@@ -23,10 +23,10 @@ so that my builds don't take 10 minutes
 - explode immediately if it's not a debug build, or there are already release assets, or there is a .cargo/config that we should be honouring
 - parse dependency tree using https://crates.io/crates/cargo-lock or similar
 - for each root of the tree, serialise and compute a hash
-  - # fetch /cratename-HASH_OF_DEPENDENCY_TREE-rustc_version-arch from github releases of `cargo-quickbuild-releases` repo, and unpack
-  - # stretch goal: keep a download cache and/or unpack in a common place and hardlink them into target/
   - try to fetch a pre-built pizza base
+    - fetch /cratename-HASH_OF_DEPENDENCY_TREE-rustc_version-arch from github releases of `cargo-quickbuild-releases` repo, and unpack
   - if success, unpack it and report to stats server
+    - stretch goal: keep a download cache and/or unpack in a common place and hardlink them into target/
   - if failure, build from source and report time to stats server
 - if any cache miss happens, POST the full Cargo.lock somewhere.
 
