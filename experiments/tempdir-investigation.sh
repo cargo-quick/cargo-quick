@@ -32,7 +32,6 @@ cat > /tmp/cargo-quickbuild-hack/Cargo.toml <<EOF
 [workspace]
 members = ["hack"]
 EOF
-cp Cargo.lock /tmp/cargo-quickbuild-hack/
 
 (
     cd /tmp/cargo-quickbuild-hack/
