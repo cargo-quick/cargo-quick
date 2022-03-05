@@ -2,6 +2,8 @@
 
 set -euxo pipefail
 
+INITIAL_COMMIT=`git rev-parse HEAD`
+
 LAST_COMMIT_MESSAGE=""
 
 commit() {
@@ -37,3 +39,5 @@ cargo build -p regex-automata
 commit "noop cargo build after tar timestamps"
 
 git log --color=always -p --reverse | less  -R +?"$LAST_COMMIT_MESSAGE"
+
+git reset $INITIAL_COMMIT
