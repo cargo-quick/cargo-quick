@@ -8,9 +8,7 @@ use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 struct RepoRecord {
-    id: String,
     name: String,
-    has_cargo_toml: bool,
     has_cargo_lock: bool,
 }
 

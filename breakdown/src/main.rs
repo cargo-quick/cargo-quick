@@ -10,9 +10,7 @@ use std::{collections::BTreeSet, error::Error, fmt::Debug, fs::File, path::Path}
 // FIXME: this is copy-pasted from fetch/main.rs. Maybe make a shared `interfaces` crate?
 #[derive(Debug, Deserialize)]
 struct RepoRecord {
-    id: String,
     name: String,
-    has_cargo_toml: bool,
     has_cargo_lock: bool,
 }
 
