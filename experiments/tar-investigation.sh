@@ -14,25 +14,14 @@ commit() {
 
 
 rm -rf target
-cargo build
+cargo build -p regex-automata
 
 commit "clean cargo build timestamps"
 
 sleep 2
-cargo build
+cargo build -p regex-automata
 
 commit "noop cargo build timestamps"
-
-sleep 2
-touch cargo-quickinstall/src/main.rs
-cargo build
-
-commit "touched-main cargo build timestamps"
-
-sleep 2
-cargo build
-
-commit "noop cargo build 2 timestamps"
 
 # `pax` format seems to provide nanosecond accuracy, and is portable to bsd+gnu. 
 # No idea why that's not the default.
@@ -43,7 +32,7 @@ tar -x -f /tmp/target.tar
 commit "tar round-trip timestamps"
 
 sleep 2
-cargo build
+cargo build -p regex-automata
 
 commit "noop cargo build after tar timestamps"
 
