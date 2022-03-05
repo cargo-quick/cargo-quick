@@ -94,6 +94,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "cargo-quick"
+version = "0.1.0"
+
+[[package]]
 name = "cargo-quickinstall"
 version = "0.1.0"
 

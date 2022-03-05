@@ -1,7 +1,8 @@
 [workspace]
 members = [
-    "fetch",
-    "breakdown",
+    "experiments/fetch",
+    "experiments/breakdown",
+    "cargo-quick",
     "cargo-quickbuild",
 ]
 
