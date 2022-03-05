@@ -2,6 +2,7 @@
 members = [
     "fetch",
     "breakdown",
+    "cargo-quickbuild",
 ]
 
 [profile.release]
