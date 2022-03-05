@@ -2,6 +2,7 @@
 
 set -euxo pipefail
 
+INITIAL_COMMIT=`git rev-parse HEAD`
 LAST_COMMIT_MESSAGE=""
 
 commit() {
@@ -19,7 +20,8 @@ rm -rf /tmp/cargo-quickbuild-hack
 
 mkdir /tmp/cargo-quickbuild-hack
 cargo init /tmp/cargo-quickbuild-hack
-
+# TODO: investigate whether you can delete some of the workspace crates,
+# sand still get the same build result.
 for file in `git ls-files | grep -E '(Cargo|lib.rs|main.rs)' `; do
     rm -rf /tmp/cargo-quickbuild-hack/$file
     mkdir -p /tmp/cargo-quickbuild-hack/$file
@@ -29,8 +31,6 @@ done
 
 (
     cd /tmp/cargo-quickbuild-hack
-    # The dependencies section happens to be at the bottom of the file.
-    # This may come in handy later.
     cargo build -p regex-automata
     tar --format=pax -c target > /tmp/target.tar
 )
@@ -44,6 +44,6 @@ sleep 2
 cargo build -p regex-automata
 commit "build regex-automata from inside the repo"
 
-# Conclusion: building from a tempdir doesn't produce something that can be reused
-
 git log --color=always -p --reverse | less  -R +?"$LAST_COMMIT_MESSAGE"
+
+git reset $INITIAL_COMMIT
