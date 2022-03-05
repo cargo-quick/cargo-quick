@@ -27,7 +27,17 @@ cargo init /tmp/cargo-quickbuild-hack/hack
 # cargo tree -p regex-automata --prefix none \
 #     | sed -e 's/ v/ = "=/' -e 's/$/"/' \
 #     >> /tmp/cargo-quickbuild-hack/hack/Cargo.toml
-cp experiments/breakdown/Cargo.toml /tmp/cargo-quickbuild-hack/hack/
+cat experiments/breakdown/Cargo.toml \
+    | grep -B1000000 -F [dependencies] \
+    > /tmp/cargo-quickbuild-hack/hack/Cargo.toml
+
+# For some reason, if I exclude csv then the build doesn't find regex-autonoma at all
+for package in `cargo tree -p regex-automata --invert --prefix=none | sed 's/ .*//'`; do
+    cat experiments/breakdown/Cargo.toml \
+        | (grep "^$package" || true) \
+        | (grep -v "^globwalk" || true) \
+        >> /tmp/cargo-quickbuild-hack/hack/Cargo.toml
+done
 
 # For some reason, workspace vs non-workspace seems to matter?
 cat > /tmp/cargo-quickbuild-hack/Cargo.toml <<EOF
@@ -37,8 +47,11 @@ EOF
 cp Cargo.lock /tmp/cargo-quickbuild-hack/
 
 (
-    cd /tmp/cargo-quickbuild-hack
+    cd /tmp/cargo-quickbuild-hack/
 
+    # omiting `-p regex-automata`` causes it to build more stuff, but not produce
+    # libregex_automata.d and libregex_automata.rlib in the top level of
+    # target/debug
     cargo build -p regex-automata
     tar --format=pax -c target > /tmp/target.tar
 )
