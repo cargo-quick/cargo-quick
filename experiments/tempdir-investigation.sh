@@ -18,27 +18,31 @@ rm -rf target
 rm -rf /tmp/cargo-quickbuild-hack
 
 mkdir /tmp/cargo-quickbuild-hack
+cargo init /tmp/cargo-quickbuild-hack
+
+for file in `git ls-files | grep -E '(Cargo|lib.rs|main.rs)' `; do
+    rm -rf /tmp/cargo-quickbuild-hack/$file
+    mkdir -p /tmp/cargo-quickbuild-hack/$file
+    rm -rf /tmp/cargo-quickbuild-hack/$file
+    cp $file /tmp/cargo-quickbuild-hack/$file
+done
 
 (
     cd /tmp/cargo-quickbuild-hack
     # The dependencies section happens to be at the bottom of the file.
     # This may come in handy later.
-    cargo init .
-    cp $REPO_ROOT/experiments/breakdown/Cargo.toml .
-    mkdir -p .cargo
-    cat > .cargo/config.toml <<EOF
-[build]
-target-dir = "$REPO_ROOT/target"
-EOF
-    cat .cargo/config.toml
-    time cargo build
+    cargo build -p regex-automata
+    tar --format=pax -c target > /tmp/target.tar
 )
 
 
-commit "build breakdown from a tempdir"
+rm -rf target
+tar -x -f /tmp/target.tar
+commit "build regex-automata from a tempdir and untar it here"
 
-cargo build -p breakdown
-commit "build breakdown from inside the repo"
+sleep 2
+cargo build -p regex-automata
+commit "build regex-automata from inside the repo"
 
 # Conclusion: building from a tempdir doesn't produce something that can be reused
 
