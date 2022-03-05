@@ -20,18 +20,12 @@ rm -rf /tmp/cargo-quickbuild-hack
 
 mkdir /tmp/cargo-quickbuild-hack
 
-cargo init /tmp/cargo-quickbuild-hack/hack
+cargo init /tmp/cargo-quickbuild-hack/
 
 # TODO: work out how to infer the set of features programmatically.
 # It looks like `cargo metadata` will give us what we need here.
-echo 'regex-automata = { version = "=0.1.9", default-features = false }' >> /tmp/cargo-quickbuild-hack/hack/Cargo.toml
-echo 'byteorder = { version = "=1.4.3", default-features = false }' >> /tmp/cargo-quickbuild-hack/hack/Cargo.toml
-
-# For some reason, workspace vs non-workspace seems to matter?
-cat > /tmp/cargo-quickbuild-hack/Cargo.toml <<EOF
-[workspace]
-members = ["hack"]
-EOF
+echo 'regex-automata = { version = "=0.1.9", default-features = false }' >> /tmp/cargo-quickbuild-hack/Cargo.toml
+echo 'byteorder = { version = "=1.4.3", default-features = false }' >> /tmp/cargo-quickbuild-hack/Cargo.toml
 
 (
     cd /tmp/cargo-quickbuild-hack/
