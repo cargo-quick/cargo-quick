@@ -27,17 +27,22 @@ cargo init /tmp/cargo-quickbuild-hack/hack
 # cargo tree -p regex-automata --prefix none \
 #     | sed -e 's/ v/ = "=/' -e 's/$/"/' \
 #     >> /tmp/cargo-quickbuild-hack/hack/Cargo.toml
-cat experiments/breakdown/Cargo.toml \
-    | grep -B1000000 -F [dependencies] \
-    > /tmp/cargo-quickbuild-hack/hack/Cargo.toml
+# cat experiments/breakdown/Cargo.toml \
+#     | grep -B1000000 -F [dependencies] \
+#     > /tmp/cargo-quickbuild-hack/hack/Cargo.toml
 
-# For some reason, if I exclude csv then the build doesn't find regex-autonoma at all
-for package in `cargo tree -p regex-automata --invert --prefix=none | sed 's/ .*//'`; do
-    cat experiments/breakdown/Cargo.toml \
-        | (grep "^$package" || true) \
-        | (grep -v "^globwalk" || true) \
-        >> /tmp/cargo-quickbuild-hack/hack/Cargo.toml
-done
+# For some reason, if I exclude csv then the build doesn't find regex-automata at all
+# for package in `cargo tree -p regex-automata --invert --prefix=none | sed 's/ .*//'`; do
+#     cat experiments/breakdown/Cargo.toml \
+#         | (grep "^$package" || true) \
+#         | (grep -v "^globwalk" || true) \
+#         >> /tmp/cargo-quickbuild-hack/hack/Cargo.toml
+# done
+
+# TODO: work out how to infer the set of features programmatically.
+# It looks like `cargo metadata` will give us what we need here.
+echo 'regex-automata = { version = "=0.1.9", default-features = false }' >> /tmp/cargo-quickbuild-hack/hack/Cargo.toml
+echo 'byteorder = { version = "=1.4.3", default-features = false }' >> /tmp/cargo-quickbuild-hack/hack/Cargo.toml
 
 # For some reason, workspace vs non-workspace seems to matter?
 cat > /tmp/cargo-quickbuild-hack/Cargo.toml <<EOF
@@ -58,12 +63,13 @@ cp Cargo.lock /tmp/cargo-quickbuild-hack/
 
 # TODO: investigate whether you can delete some of the workspace crates,
 # sand still get the same build result.
-for file in Cargo.lock experiments/breakdown/Cargo.toml experiments/breakdown/src/main.rs; do
-    rm -rf /tmp/cargo-quickbuild-hack/$file
-    mkdir -p /tmp/cargo-quickbuild-hack/$file
-    rm -rf /tmp/cargo-quickbuild-hack/$file
-    cp $file /tmp/cargo-quickbuild-hack/$file
-done
+# for file in experiments/breakdown/Cargo.toml experiments/breakdown/src/main.rs # Cargo.lock
+# do
+#     rm -rf /tmp/cargo-quickbuild-hack/$file
+#     mkdir -p /tmp/cargo-quickbuild-hack/$file
+#     rm -rf /tmp/cargo-quickbuild-hack/$file
+#     cp $file /tmp/cargo-quickbuild-hack/$file
+# done
 
 
 
