@@ -1,7 +1,7 @@
 fn main() {
     let mut args: Vec<_> = std::env::args().collect();
     if args[0] == "quick" {
-        args.remove(1);
+        args.remove(0);
     }
     match args[1].as_str() {
         "install" => {
