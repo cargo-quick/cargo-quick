@@ -32,22 +32,38 @@ impl<'g> FeatureFilter<'g> for AllFeatures {
 fn unpack_or_build_packages() -> Result<(), Box<dyn Error>> {
     let metadata = MetadataCommand::new().exec()?.build_graph()?;
 
-    let initials = metadata
+    let cargo_set = metadata
         .resolve_workspace()
-        .to_feature_set(StandardFeatures::Default);
-    let features_only = metadata.feature_graph().resolve_none();
-    let mut cargo_options = CargoOptions::new();
-    cargo_options.set_resolver(CargoResolverVersion::V2);
-    let cargo_set = CargoSet::new(initials.clone(), features_only, &cargo_options)
-        .expect("cargo resolution should succeed");
+        .to_feature_set(StandardFeatures::Default)
+        .into_cargo_set(CargoOptions::new().set_resolver(CargoResolverVersion::V2))?;
+    // let features_only = metadata.feature_graph().resolve_none();
+    // let mut cargo_options = CargoOptions::new();
+    // cargo_options.set_resolver(CargoResolverVersion::V2);
+    // initials
+    //     .features(DependencyDirection::Reverse)
+    //     .for_each(|feature| {
+    //         dbg!(feature.feature_id());
+    //     });
+    // let cargo_set = CargoSet::new(initials.clone(), features_only, &cargo_options)
+    //     .expect("cargo resolution should succeed");
 
-    for package in cargo_set
+    let feature_graph = cargo_set.feature_graph();
+    for feature in cargo_set
         .host_features()
-        // depth first search
-        .packages_with_features(DependencyDirection::Reverse)
+        .features(DependencyDirection::Forward)
+        .filter(|f| {
+            feature_graph
+                .is_default_feature(
+                    // FIXME: contribute Into<FeatureId> for FeatureMetadata
+                    f.feature_id(),
+                )
+                .unwrap()
+        })
         .take(8)
     {
-        unpack_or_build_subtree(initials.clone(), &cargo_options, package)?;
+        dbg!(feature.feature_id());
+
+        // unpack_or_build_subtree(initials.clone(), &cargo_options, package)?;
     }
 
     Ok(())
@@ -78,15 +94,21 @@ fn unpack_or_build_subtree(
 
     if packages.is_empty() {
         println!(
-            "skipping {package:?}. Maybe it doesn't get built for the host arch?",
-            package = package.package().name()
+            "skipping {package:?} {version:?}",
+            package = package.package().name(),
+            version = package.package().version().to_string(),
         );
         return Ok(());
     }
 
-    build_scratch_package(packages)?;
+    // build_scratch_package(packages)?;
 
-    println!("built {package:?}");
+    println!(
+        "building {package:?} {version:?}",
+        package = package.package().name(),
+        version = package.package().version().to_string(),
+    );
+    // println!("built {package:?}");
     Ok(())
 }
 
