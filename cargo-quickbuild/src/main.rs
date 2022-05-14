@@ -65,49 +65,6 @@ fn unpack_or_build_packages() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-// fn unpack_or_build_subtree(
-//     initials: FeatureSet,
-//     cargo_options: &CargoOptions,
-//     package: FeatureList,
-// ) -> Result<(), Box<dyn Error>> {
-//     // Notice that we're flipping things about here: make a cargo set from our
-//     // package downwards, but taking the features from the set of packages in
-//     // the repo.
-//     let cargo_set = CargoSet::new(
-//         package
-//             .package()
-//             .to_package_set()
-//             .to_feature_set(StandardFeatures::None),
-//         initials.clone(),
-//         &cargo_options,
-//     )
-//     .expect("cargo resolution should succeed");
-
-//     let packages: Vec<_> = cargo_set
-//         .host_features()
-//         .packages_with_features(DependencyDirection::Reverse)
-//         .collect();
-
-//     if packages.is_empty() {
-//         println!(
-//             "skipping {package:?} {version:?}",
-//             package = package.package().name(),
-//             version = package.package().version().to_string(),
-//         );
-//         return Ok(());
-//     }
-
-//     // build_scratch_package(packages)?;
-
-//     println!(
-//         "building {package:?} {version:?}",
-//         package = package.package().name(),
-//         version = package.package().version().to_string(),
-//     );
-//     // println!("built {package:?}");
-//     Ok(())
-// }
-
 fn build_scratch_package(unit: &Unit, deps: &Vec<UnitDep>) -> Result<(), Box<dyn Error>> {
     let tempdir = TempDir::new("cargo-quickbuild-scratchpad")?;
     let scratch_dir = tempdir.path().join("cargo-quickbuild-scratchpad");
@@ -126,8 +83,8 @@ fn build_scratch_package(unit: &Unit, deps: &Vec<UnitDep>) -> Result<(), Box<dyn
         .open(&cargo_toml_path)?;
 
     std::iter::once(unit).chain(
-    deps.iter()
-    .map(|dep|&dep.unit))
+        deps.iter().map(|dep| &dep.unit)
+    )
     .map(|unit| -> std::io::Result<()>{
         let package = &unit.deref().pkg;
         let name = package.name();
