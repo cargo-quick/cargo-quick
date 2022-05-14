@@ -1,6 +1,12 @@
 use std::io::Write;
+use std::path::Path;
 use std::{error::Error, ffi::OsStr, process::Command};
 
+use cargo::core::compiler::unit_graph::UnitDep;
+use cargo::core::compiler::{CompileMode, Unit, UnitInterner};
+use cargo::core::Workspace;
+use cargo::ops::{create_bcx, CompileOptions};
+use cargo::Config;
 use guppy::{
     graph::{
         cargo::{CargoOptions, CargoResolverVersion, CargoSet},
@@ -32,39 +38,70 @@ impl<'g> FeatureFilter<'g> for AllFeatures {
 fn unpack_or_build_packages() -> Result<(), Box<dyn Error>> {
     let metadata = MetadataCommand::new().exec()?.build_graph()?;
 
-    let cargo_set = metadata
-        .resolve_workspace()
-        .to_feature_set(StandardFeatures::Default)
-        .into_cargo_set(CargoOptions::new().set_resolver(CargoResolverVersion::V2))?;
-    // let features_only = metadata.feature_graph().resolve_none();
-    // let mut cargo_options = CargoOptions::new();
-    // cargo_options.set_resolver(CargoResolverVersion::V2);
-    // initials
-    //     .features(DependencyDirection::Reverse)
-    //     .for_each(|feature| {
-    //         dbg!(feature.feature_id());
-    //     });
-    // let cargo_set = CargoSet::new(initials.clone(), features_only, &cargo_options)
-    //     .expect("cargo resolution should succeed");
+    let config = Config::default()?;
 
-    let feature_graph = cargo_set.feature_graph();
-    for feature in cargo_set
-        .host_features()
-        .features(DependencyDirection::Forward)
-        .filter(|f| {
-            feature_graph
-                .is_default_feature(
-                    // FIXME: contribute Into<FeatureId> for FeatureMetadata
-                    f.feature_id(),
-                )
-                .unwrap()
-        })
-        .take(8)
-    {
-        dbg!(feature.feature_id());
+    let ws = Workspace::new(&Path::new("Cargo.toml").canonicalize()?, &config)?;
+    let options = CompileOptions::new(&config, CompileMode::Build)?;
+    let interner = UnitInterner::new();
+    let bcx = create_bcx(&ws, &options, &interner)?;
 
-        // unpack_or_build_subtree(initials.clone(), &cargo_options, package)?;
+    let mut units: Vec<(&Unit, &Vec<UnitDep>)> = bcx.unit_graph.iter().collect();
+    units.sort_unstable();
+
+    for (unit, deps) in units {
+        // if unit.pkg.package_id().name() == "arrayvec" {
+        //     break;
+        // }
+        // if unit.pkg.package_id().name() != "anyhow" {
+        //     continue;
+        // }
+        // Note to self: anyhow appears 3 times:
+        // * lib_target("anyhow", ["lib"], "anyhow-1.0.57/src/lib.rs", Edition2018),
+        // * custom_build_target("build-script-build", "anyhow-1.0.57/build.rs", Edition2018),
+        //   mode: RunCustomBuild,
+        // * custom_build_target("build-script-build", "anyhow-1.0.57/build.rs", Edition2018),
+        //   mode: Build,
+        println!(
+            "{} {}",
+            unit.pkg.package_id().name(),
+            unit.pkg.package_id().version()
+        );
+        // dbg!(deps);
     }
+
+    // let cargo_set = metadata
+    //     .resolve_workspace()
+    //     .to_feature_set(StandardFeatures::Default)
+    //     .into_cargo_set(CargoOptions::new().set_resolver(CargoResolverVersion::V2))?;
+    // // let features_only = metadata.feature_graph().resolve_none();
+    // // let mut cargo_options = CargoOptions::new();
+    // // cargo_options.set_resolver(CargoResolverVersion::V2);
+    // // initials
+    // //     .features(DependencyDirection::Reverse)
+    // //     .for_each(|feature| {
+    // //         dbg!(feature.feature_id());
+    // //     });
+    // // let cargo_set = CargoSet::new(initials.clone(), features_only, &cargo_options)
+    // //     .expect("cargo resolution should succeed");
+
+    // let feature_graph = cargo_set.feature_graph();
+    // for feature in cargo_set
+    //     .host_features()
+    //     .features(DependencyDirection::Forward)
+    //     .filter(|f| {
+    //         feature_graph
+    //             .is_default_feature(
+    //                 // FIXME: contribute Into<FeatureId> for FeatureMetadata
+    //                 f.feature_id(),
+    //             )
+    //             .unwrap()
+    //     })
+    //     .take(8)
+    // {
+    //     dbg!(feature.feature_id());
+
+    //     // unpack_or_build_subtree(initials.clone(), &cargo_options, package)?;
+    // }
 
     Ok(())
 }
