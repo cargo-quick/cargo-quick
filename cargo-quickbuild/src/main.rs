@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::io::Write;
 use std::path::Path;
 use std::{error::Error, ffi::OsStr, process::Command};
@@ -29,8 +30,15 @@ fn unpack_or_build_packages() -> Result<(), Box<dyn Error>> {
     let mut units: Vec<(&Unit, &Vec<UnitDep>)> = bcx.unit_graph.iter().collect();
     units.sort_unstable();
 
-    for (unit, deps) in units {
+    // libs with no lib deps and no build.rs
+    let no_deps = units
+        .iter()
+        .filter(|(unit, deps)| unit.target.is_lib() && deps.is_empty())
+        .map(|(u, _d)| *u);
+
+    for unit in no_deps {
         // if unit.pkg.package_id().name() == "arrayvec" {
+        //     dbg!(unit);
         //     break;
         // }
         // if unit.pkg.package_id().name() != "anyhow" {
