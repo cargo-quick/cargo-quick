@@ -1,5 +1,6 @@
 use std::collections::BTreeSet;
 use std::io::Write;
+use std::ops::Deref;
 use std::path::Path;
 use std::{error::Error, ffi::OsStr, process::Command};
 
@@ -56,6 +57,9 @@ fn unpack_or_build_packages() -> Result<(), Box<dyn Error>> {
             unit.pkg.package_id().version()
         );
         // dbg!(deps);
+
+        build_scratch_package(unit, &Vec::new())?;
+        break;
     }
 
     Ok(())
@@ -104,49 +108,52 @@ fn unpack_or_build_packages() -> Result<(), Box<dyn Error>> {
 //     Ok(())
 // }
 
-// fn build_scratch_package(packages: Vec<FeatureList>) -> Result<(), Box<dyn Error>> {
-//     let tempdir = TempDir::new("cargo-quickbuild-scratchpad")?;
-//     let scratch_dir = tempdir.path().join("cargo-quickbuild-scratchpad");
-//     let init_ok = command(["cargo", "init"])
-//         .arg(&scratch_dir)
-//         .status()?
-//         .success();
-//     if !init_ok {
-//         Err("cargo init failed")?;
-//     }
+fn build_scratch_package(unit: &Unit, deps: &Vec<UnitDep>) -> Result<(), Box<dyn Error>> {
+    let tempdir = TempDir::new("cargo-quickbuild-scratchpad")?;
+    let scratch_dir = tempdir.path().join("cargo-quickbuild-scratchpad");
+    let init_ok = command(["cargo", "init"])
+        .arg(&scratch_dir)
+        .status()?
+        .success();
+    if !init_ok {
+        Err("cargo init failed")?;
+    }
 
-//     let cargo_toml_path = scratch_dir.join("Cargo.toml");
-//     let mut cargo_toml = std::fs::OpenOptions::new()
-//         .write(true)
-//         .append(true)
-//         .open(&cargo_toml_path)?;
+    let cargo_toml_path = scratch_dir.join("Cargo.toml");
+    let mut cargo_toml = std::fs::OpenOptions::new()
+        .write(true)
+        .append(true)
+        .open(&cargo_toml_path)?;
 
-//     packages.iter()
-//     .map(|package| -> std::io::Result<()>{
-//         let name = package.package().name();
-//         let version = package.package().version().to_string();
-//         let features = package.features();
-//         // FIXME: this will probably break when we have multiple versions  of the same
-//         // package in the tree. Could we include version.replace('.', '_') or something?
-//         writeln!(cargo_toml,
-//             r#"{name} = {{ version = "={version}", features = {features:?}, default-features = false }}"#
-//         )
-//     }).collect::<Result<_, std::io::Error>>()?;
-//     cargo_toml.flush()?;
-//     drop(cargo_toml);
+    std::iter::once(unit).chain(
+    deps.iter()
+    .map(|dep|&dep.unit))
+    .map(|unit| -> std::io::Result<()>{
+        let package = &unit.deref().pkg;
+        let name = package.name();
+        let version = package.version().to_string();
+        let features = &unit.deref().features;
+        // FIXME: this will probably break when we have multiple versions  of the same
+        // package in the tree. Could we include version.replace('.', '_') or something?
+        writeln!(cargo_toml,
+            r#"{name} = {{ version = "={version}", features = {features:?}, default-features = false }}"#
+        )
+    }).collect::<Result<_, std::io::Error>>()?;
+    cargo_toml.flush()?;
+    drop(cargo_toml);
 
-//     command(["cat"]).arg(&cargo_toml_path).status()?;
+    command(["cat"]).arg(&cargo_toml_path).status()?;
 
-//     let cargo_build_ok = command(["cargo", "build"])
-//         .current_dir(&scratch_dir)
-//         .status()?
-//         .success();
+    let cargo_build_ok = command(["cargo", "build"])
+        .current_dir(&scratch_dir)
+        .status()?
+        .success();
 
-//     if !cargo_build_ok {
-//         Err("cargo build failed")?;
-//     }
-//     Ok(())
-// }
+    if !cargo_build_ok {
+        Err("cargo build failed")?;
+    }
+    Ok(())
+}
 
 // fn run_cargo_build(args: Vec<String>) -> Result<(), Box<dyn Error>> {
 //     let mut command = Command::new("cargo");
