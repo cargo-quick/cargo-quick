@@ -7,6 +7,4 @@ edition = "2021"
 
 [dependencies]
 cargo = "0.61.1"
-cargo_metadata = "0.14.2"
-guppy = "0.13.0"
 tempdir = "0.3.7"
