@@ -7,4 +7,5 @@ edition = "2021"
 
 [dependencies]
 cargo = "0.61.1"
+crypto-hash = "0.3.4"
 tempdir = "0.3.7"

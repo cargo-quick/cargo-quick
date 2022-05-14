@@ -1,4 +1,5 @@
-use std::collections::BTreeSet;
+use std::fmt::Write as _;
+use std::fs::OpenOptions;
 use std::io::Write;
 use std::ops::Deref;
 use std::path::Path;
@@ -9,6 +10,7 @@ use cargo::core::compiler::{CompileMode, Unit, UnitInterner};
 use cargo::core::Workspace;
 use cargo::ops::{create_bcx, CompileOptions};
 use cargo::Config;
+use crypto_hash::{hex_digest, Algorithm};
 use tempdir::TempDir;
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -59,15 +61,55 @@ fn unpack_or_build_packages() -> Result<(), Box<dyn Error>> {
         // dbg!(deps);
 
         build_scratch_package(unit, &Vec::new())?;
-        break;
     }
 
     Ok(())
 }
 
 fn build_scratch_package(unit: &Unit, deps: &Vec<UnitDep>) -> Result<(), Box<dyn Error>> {
+    let deps_string = units_to_cargo_toml_deps(unit, deps);
+    let digest = hex_digest(Algorithm::SHA256, deps_string.as_bytes());
+
+    let package_name = unit.deref().pkg.name();
+    let package_version = unit.deref().pkg.version();
+    let scratchpad_package_name = format!("{package_name}-{package_version}-{digest}");
+    build_tarball(scratchpad_package_name, deps_string)?;
+    Ok(())
+}
+
+fn units_to_cargo_toml_deps(unit: &Unit, deps: &Vec<UnitDep>) -> String {
+    let mut deps_string = String::new();
+    std::iter::once(unit).chain(
+        deps.iter().map(|dep| &dep.unit)
+    )
+    .for_each(|unit| {
+        let package = &unit.deref().pkg;
+        let name = package.name();
+        let version = package.version().to_string();
+        let features = &unit.deref().features;
+        // FIXME: this will probably break when we have multiple versions  of the same
+        // package in the tree. Could we include version.replace('.', '_') or something?
+        writeln!(deps_string,
+            r#"{name} = {{ version = "={version}", features = {features:?}, default-features = false }}"#
+        ).unwrap();
+    });
+    deps_string
+}
+
+fn build_tarball(
+    scratchpad_package_name: String,
+    deps_string: String,
+) -> Result<(), Box<dyn Error>> {
+    let tarball_path =
+        Path::new("/Users/alsuren/tmp").join(format!("{scratchpad_package_name}.tar.zst"));
+    if tarball_path.exists() {
+        println!("{tarball_path:?} already exists");
+        return Ok(());
+    }
     let tempdir = TempDir::new("cargo-quickbuild-scratchpad")?;
-    let scratch_dir = tempdir.path().join("cargo-quickbuild-scratchpad");
+    let scratch_dir = tempdir
+        .path()
+        .join(scratchpad_package_name.replace('.', "-"));
     let init_ok = command(["cargo", "init"])
         .arg(&scratch_dir)
         .status()?
@@ -75,43 +117,32 @@ fn build_scratch_package(unit: &Unit, deps: &Vec<UnitDep>) -> Result<(), Box<dyn
     if !init_ok {
         Err("cargo init failed")?;
     }
-
     let cargo_toml_path = scratch_dir.join("Cargo.toml");
     let mut cargo_toml = std::fs::OpenOptions::new()
         .write(true)
         .append(true)
         .open(&cargo_toml_path)?;
-
-    std::iter::once(unit).chain(
-        deps.iter().map(|dep| &dep.unit)
-    )
-    .map(|unit| -> std::io::Result<()>{
-        let package = &unit.deref().pkg;
-        let name = package.name();
-        let version = package.version().to_string();
-        let features = &unit.deref().features;
-        // FIXME: this will probably break when we have multiple versions  of the same
-        // package in the tree. Could we include version.replace('.', '_') or something?
-        writeln!(cargo_toml,
-            r#"{name} = {{ version = "={version}", features = {features:?}, default-features = false }}"#
-        )
-    }).collect::<Result<_, std::io::Error>>()?;
+    write!(cargo_toml, "{}", deps_string)?;
     cargo_toml.flush()?;
     drop(cargo_toml);
-
     command(["cat"]).arg(&cargo_toml_path).status()?;
-
-    let cargo_build_ok = command(["cargo", "build"])
+    // FIXME: run cargo fetch at the top level to make sure we can get away with --offline here.
+    let cargo_build_ok = command(["cargo", "build", "--offline"])
         .current_dir(&scratch_dir)
         .status()?
         .success();
-
     if !cargo_build_ok {
         Err("cargo build failed")?;
     }
+    // FIXME: actually tar up the scratch target dir before it gets dropped.
+    OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open(&tarball_path)?;
+    println!("wrote to {tarball_path:?}");
+
     Ok(())
 }
-
 // fn run_cargo_build(args: Vec<String>) -> Result<(), Box<dyn Error>> {
 //     let mut command = Command::new("cargo");
 //     command.arg("build").args(args);

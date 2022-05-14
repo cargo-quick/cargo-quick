@@ -214,6 +214,7 @@ name = "cargo-quickbuild"
 version = "0.1.0"
 dependencies = [
  "cargo",
+ "crypto-hash",
  "tempdir",
 ]
 
