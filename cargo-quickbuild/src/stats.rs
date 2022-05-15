@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 pub struct Stats {
     start: Instant,
     init_done: Option<Instant>,
+    untar_done: Option<Instant>,
     build_done: Option<Instant>,
     tar_done: Option<Instant>,
 }
@@ -13,12 +14,16 @@ impl Stats {
         Self {
             start: Instant::now(),
             init_done: None,
+            untar_done: None,
             build_done: None,
             tar_done: None,
         }
     }
     pub fn init_done(&mut self) {
         self.init_done.replace(Instant::now());
+    }
+    pub fn untar_done(&mut self) {
+        self.untar_done.replace(Instant::now());
     }
     pub fn build_done(&mut self) {
         self.build_done.replace(Instant::now());
@@ -46,6 +51,8 @@ pub struct ComputedStats {
     #[serde(with = "duration_as_float_seconds")]
     init_duration: Duration,
     #[serde(with = "duration_as_float_seconds")]
+    untar_duration: Duration,
+    #[serde(with = "duration_as_float_seconds")]
     build_duration: Duration,
     #[serde(with = "duration_as_float_seconds")]
     tar_duration: Duration,
@@ -55,7 +62,8 @@ impl From<Stats> for ComputedStats {
     fn from(stats: Stats) -> Self {
         Self {
             init_duration: stats.init_done.unwrap() - stats.start,
-            build_duration: stats.build_done.unwrap() - stats.init_done.unwrap(),
+            untar_duration: stats.untar_done.unwrap() - stats.init_done.unwrap(),
+            build_duration: stats.build_done.unwrap() - stats.untar_done.unwrap(),
             tar_duration: stats.tar_done.unwrap() - stats.build_done.unwrap(),
         }
     }

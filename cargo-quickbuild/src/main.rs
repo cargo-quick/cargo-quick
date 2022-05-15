@@ -160,6 +160,7 @@ fn build_tarball(
     stats.init_done();
 
     unpack_tarballs_of_deps(computed_deps, unit, &scratch_dir)?;
+    stats.untar_done();
 
     let deps_string = units_to_cargo_toml_deps(computed_deps, unit);
     add_deps_to_manifest_and_run_cargo_build(deps_string, &scratch_dir)?;
