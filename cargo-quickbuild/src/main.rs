@@ -71,8 +71,8 @@ fn build_scratch_package(unit: &Unit, deps: &Vec<UnitDep>) -> Result<(), Box<dyn
 
     let package_name = unit.deref().pkg.name();
     let package_version = unit.deref().pkg.version();
-    let scratchpad_package_name = format!("{package_name}-{package_version}-{digest}");
-    build_tarball(scratchpad_package_name, deps_string)?;
+    let tarball_prefix = format!("{package_name}-{package_version}-{digest}");
+    build_tarball(deps_string, tarball_prefix)?;
     Ok(())
 }
 
@@ -95,20 +95,14 @@ fn units_to_cargo_toml_deps(unit: &Unit, deps: &Vec<UnitDep>) -> String {
     deps_string
 }
 
-fn build_tarball(
-    scratchpad_package_name: String,
-    deps_string: String,
-) -> Result<(), Box<dyn Error>> {
-    let tarball_path =
-        Path::new("/Users/alsuren/tmp").join(format!("{scratchpad_package_name}.tar"));
+fn build_tarball(deps_string: String, tarball_prefix: String) -> Result<(), Box<dyn Error>> {
+    let tarball_path = Path::new("/Users/alsuren/tmp").join(format!("{tarball_prefix}.tar"));
     if tarball_path.exists() {
         println!("{tarball_path:?} already exists");
         return Ok(());
     }
     let tempdir = TempDir::new("cargo-quickbuild-scratchpad")?;
-    let scratch_dir = tempdir
-        .path()
-        .join(scratchpad_package_name.replace('.', "-"));
+    let scratch_dir = tempdir.path().join("cargo-quickbuild-scratchpad");
     let init_ok = command(["cargo", "init"])
         .arg(&scratch_dir)
         .status()?
