@@ -169,6 +169,7 @@ fn tar_target_dir(
     scratch_dir: std::path::PathBuf,
     temp_tarball_path: &std::path::PathBuf,
 ) -> Result<(), Box<dyn Error>> {
+    // FIXME: cargo already bundles tar as a dep, so just use that
     command([
         "tar",
         "-f",
