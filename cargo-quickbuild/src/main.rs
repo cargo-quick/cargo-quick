@@ -1,7 +1,7 @@
 mod stats;
 mod std_ext;
 
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::io::Write;
 use std::ops::Deref;
@@ -32,6 +32,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 fn unpack_or_build_packages() -> Result<(), Box<dyn Error>> {
     let config = Config::default()?;
 
+    // FIXME: compile cargo in release mode
     let ws = Workspace::new(&Path::new("Cargo.toml").canonicalize()?, &config)?;
     let options = CompileOptions::new(&config, CompileMode::Build)?;
     let interner = UnitInterner::new();
@@ -40,47 +41,50 @@ fn unpack_or_build_packages() -> Result<(), Box<dyn Error>> {
     let mut units: Vec<(&Unit, &Vec<UnitDep>)> = bcx.unit_graph.iter().collect();
     units.sort_unstable();
 
-    // libs with no lib deps and no build.rs
-    let no_deps = units
-        .iter()
-        .filter(|(unit, deps)| unit.target.is_lib() && deps.is_empty())
-        .map(|(u, _d)| *u)
-        .collect::<BTreeSet<_>>();
+    let mut computed_deps = BTreeMap::<&Unit, &Vec<UnitDep>>::default();
 
-    let one_dep_layer = units.iter().filter(|(unit, deps)| {
-        unit.target.is_lib()
-            && !no_deps.contains(unit)
-            && deps.iter().all(|dep| no_deps.contains(&dep.unit))
-    });
+    for level in 0..=2 {
+        println!("START OF LEVEL {level}");
+        let current_level;
+        // libs with no lib unbuilt deps and no build.rs
+        (current_level, units) = units.iter().partition(|(unit, deps)| {
+            unit.target.is_lib() && deps.iter().all(|dep| computed_deps.contains_key(&dep.unit))
+        });
 
-    for (unit, deps) in one_dep_layer {
-        println!(
-            "{} {}",
-            unit.pkg.package_id().name(),
-            unit.pkg.package_id().version()
-        );
-
-        build_scratch_package(unit, deps)?;
+        for (unit, deps) in current_level {
+            computed_deps.insert(unit, deps);
+            build_scratch_package(&computed_deps, unit)?;
+        }
     }
 
     Ok(())
 }
 
-fn build_scratch_package(unit: &Unit, deps: &Vec<UnitDep>) -> Result<(), Box<dyn Error>> {
-    let deps_string = units_to_cargo_toml_deps(unit, deps);
+fn build_scratch_package(
+    computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>,
+    unit: &Unit,
+) -> Result<(), Box<dyn Error>> {
+    let deps = *computed_deps.get(unit).unwrap();
+    let deps_string = units_to_cargo_toml_deps(computed_deps, unit);
+
     let digest = hex_digest(Algorithm::SHA256, deps_string.as_bytes());
 
     let package_name = unit.deref().pkg.name();
     let package_version = unit.deref().pkg.version();
     let tarball_prefix = format!("{package_name}-{package_version}-{digest}");
+    println!("\n{tarball_prefix} deps:\n{}", deps_string);
+
+    for dep in deps {
+        build_scratch_package(computed_deps, &dep.unit)?;
+    }
     build_tarball(deps_string, tarball_prefix)?;
     Ok(())
 }
 
-fn units_to_cargo_toml_deps(unit: &Unit, deps: &Vec<UnitDep>) -> String {
+fn units_to_cargo_toml_deps(computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>, unit: &Unit) -> String {
     let mut deps_string = String::new();
     std::iter::once(unit).chain(
-        deps.iter().map(|dep| &dep.unit)
+        flatten_deps(computed_deps, unit)
     )
     .for_each(|unit| {
         let package = &unit.deref().pkg;
@@ -89,11 +93,23 @@ fn units_to_cargo_toml_deps(unit: &Unit, deps: &Vec<UnitDep>) -> String {
         let features = &unit.deref().features;
         // FIXME: this will probably break when we have multiple versions  of the same
         // package in the tree. Could we include version.replace('.', '_') or something?
+        // We probably also want to deduplicate by unit equality.
         writeln!(deps_string,
             r#"{name} = {{ version = "={version}", features = {features:?}, default-features = false }}"#
         ).unwrap();
     });
     deps_string
+}
+
+fn flatten_deps<'a>(
+    computed_deps: &'a BTreeMap<&Unit, &Vec<UnitDep>>,
+    unit: &'a Unit,
+) -> Box<dyn Iterator<Item = &'a Unit> + 'a> {
+    Box::new(
+        (&*computed_deps.get(unit).unwrap()).iter().flat_map(|dep| {
+            std::iter::once(&dep.unit).chain(flatten_deps(computed_deps, &dep.unit))
+        }),
+    )
 }
 
 fn build_tarball(deps_string: String, tarball_prefix: String) -> Result<(), Box<dyn Error>> {
@@ -143,8 +159,6 @@ fn add_deps_to_manifest_and_run_cargo_build(
     deps_string: String,
     scratch_dir: &std::path::PathBuf,
 ) -> Result<(), Box<dyn Error>> {
-    println!("deps:\n{}", deps_string);
-
     let cargo_toml_path = scratch_dir.join("Cargo.toml");
     let mut cargo_toml = std::fs::OpenOptions::new()
         .write(true)
