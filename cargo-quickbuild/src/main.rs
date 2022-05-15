@@ -1,5 +1,4 @@
 use std::fmt::Write as _;
-use std::fs::OpenOptions;
 use std::io::Write;
 use std::ops::Deref;
 use std::path::Path;
@@ -101,7 +100,7 @@ fn build_tarball(
     deps_string: String,
 ) -> Result<(), Box<dyn Error>> {
     let tarball_path =
-        Path::new("/Users/alsuren/tmp").join(format!("{scratchpad_package_name}.tar.zst"));
+        Path::new("/Users/alsuren/tmp").join(format!("{scratchpad_package_name}.tar"));
     if tarball_path.exists() {
         println!("{tarball_path:?} already exists");
         return Ok(());
@@ -134,11 +133,27 @@ fn build_tarball(
     if !cargo_build_ok {
         Err("cargo build failed")?;
     }
-    // FIXME: actually tar up the scratch target dir before it gets dropped.
-    OpenOptions::new()
-        .create(true)
-        .write(true)
-        .open(&tarball_path)?;
+
+    // we write to a temporary location and then mv because mv is an atomic operation in posix
+    let temp_tarball_path = tempdir.path().join("target.tar");
+
+    // tar --format=pax -c target > target.tar
+    if !command([
+        "tar",
+        "-f",
+        &temp_tarball_path.to_string_lossy(),
+        "--format=pax",
+        "-c",
+        "target",
+    ])
+    .current_dir(&scratch_dir)
+    .status()?
+    .success()
+    {
+        // FIXME: there is an unstable method for this: add it as an extension method?
+        Err("tar failed")?;
+    }
+    std::fs::rename(&temp_tarball_path, &tarball_path)?;
     println!("wrote to {tarball_path:?}");
 
     Ok(())
