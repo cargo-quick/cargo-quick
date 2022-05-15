@@ -148,6 +148,8 @@ fn add_deps_to_manifest_and_run_cargo_build(
     deps_string: String,
     scratch_dir: &std::path::PathBuf,
 ) -> Result<(), Box<dyn Error>> {
+    println!("deps:\n{}", deps_string);
+
     let cargo_toml_path = scratch_dir.join("Cargo.toml");
     let mut cargo_toml = std::fs::OpenOptions::new()
         .write(true)
@@ -156,7 +158,7 @@ fn add_deps_to_manifest_and_run_cargo_build(
     write!(cargo_toml, "{}", deps_string)?;
     cargo_toml.flush()?;
     drop(cargo_toml);
-    command(["cat"]).arg(&cargo_toml_path).status()?;
+
     command(["cargo", "build", "--offline"])
         .current_dir(scratch_dir)
         .status()?
