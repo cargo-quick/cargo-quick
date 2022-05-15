@@ -2,6 +2,7 @@ use std::fmt::Write as _;
 use std::io::Write;
 use std::ops::Deref;
 use std::path::Path;
+use std::time::{Duration, Instant};
 use std::{error::Error, ffi::OsStr, process::Command};
 
 use cargo::core::compiler::unit_graph::UnitDep;
@@ -95,7 +96,51 @@ fn units_to_cargo_toml_deps(unit: &Unit, deps: &Vec<UnitDep>) -> String {
     deps_string
 }
 
+struct Stats {
+    start: Instant,
+    init_done: Option<Instant>,
+    build_done: Option<Instant>,
+    tar_done: Option<Instant>,
+}
+impl Stats {
+    fn new() -> Self {
+        Self {
+            start: Instant::now(),
+            init_done: None,
+            build_done: None,
+            tar_done: None,
+        }
+    }
+    fn init_done(&mut self) {
+        self.init_done.replace(Instant::now());
+    }
+    fn build_done(&mut self) {
+        self.build_done.replace(Instant::now());
+    }
+    fn tar_done(&mut self) {
+        self.tar_done.replace(Instant::now());
+    }
+}
+
+#[derive(serde::Serialize)]
+struct ComputedStats {
+    init_duration: Duration,
+    build_duration: Duration,
+    tar_duration: Duration,
+}
+
+impl From<Stats> for ComputedStats {
+    fn from(stats: Stats) -> Self {
+        Self {
+            init_duration: stats.init_done.unwrap() - stats.start,
+            build_duration: stats.build_done.unwrap() - stats.init_done.unwrap(),
+            tar_duration: stats.tar_done.unwrap() - stats.build_done.unwrap(),
+        }
+    }
+}
+
 fn build_tarball(deps_string: String, tarball_prefix: String) -> Result<(), Box<dyn Error>> {
+    let mut stats = Stats::new();
     let tarball_path = Path::new("/Users/alsuren/tmp").join(format!("{tarball_prefix}.tar"));
     if tarball_path.exists() {
         println!("{tarball_path:?} already exists");
@@ -110,6 +155,8 @@ fn build_tarball(deps_string: String, tarball_prefix: String) -> Result<(), Box<
     if !init_ok {
         Err("cargo init failed")?;
     }
+    stats.init_done();
+
     let cargo_toml_path = scratch_dir.join("Cargo.toml");
     let mut cargo_toml = std::fs::OpenOptions::new()
         .write(true)
@@ -127,9 +174,11 @@ fn build_tarball(deps_string: String, tarball_prefix: String) -> Result<(), Box<
     if !cargo_build_ok {
         Err("cargo build failed")?;
     }
+    stats.build_done();
 
     // we write to a temporary location and then mv because mv is an atomic operation in posix
     let temp_tarball_path = tempdir.path().join("target.tar");
+    let temp_stats_path = tarball_path.with_extension("stats.json");
 
     // tar --format=pax -c target > target.tar
     if !command([
@@ -147,7 +196,13 @@ fn build_tarball(deps_string: String, tarball_prefix: String) -> Result<(), Box<
         // FIXME: there is an unstable method for this: add it as an extension method?
         Err("tar failed")?;
     }
+    stats.tar_done();
+    serde_json::to_writer_pretty(
+        std::fs::File::create(&temp_stats_path)?,
+        &ComputedStats::from(stats),
+    )?;
     std::fs::rename(&temp_tarball_path, &tarball_path)?;
+    std::fs::rename(&temp_stats_path, tarball_path.with_extension("stats.json"))?;
     println!("wrote to {tarball_path:?}");
 
     Ok(())
