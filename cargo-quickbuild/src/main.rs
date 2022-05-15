@@ -1,6 +1,7 @@
 mod stats;
 mod std_ext;
 
+use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::io::Write;
 use std::ops::Deref;
@@ -27,6 +28,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     unpack_or_build_packages()?;
     Ok(())
 }
+
 fn unpack_or_build_packages() -> Result<(), Box<dyn Error>> {
     let config = Config::default()?;
 
@@ -42,30 +44,23 @@ fn unpack_or_build_packages() -> Result<(), Box<dyn Error>> {
     let no_deps = units
         .iter()
         .filter(|(unit, deps)| unit.target.is_lib() && deps.is_empty())
-        .map(|(u, _d)| *u);
+        .map(|(u, _d)| *u)
+        .collect::<BTreeSet<_>>();
 
-    for unit in no_deps {
-        // if unit.pkg.package_id().name() == "arrayvec" {
-        //     dbg!(unit);
-        //     break;
-        // }
-        // if unit.pkg.package_id().name() != "anyhow" {
-        //     continue;
-        // }
-        // Note to self: anyhow appears 3 times:
-        // * lib_target("anyhow", ["lib"], "anyhow-1.0.57/src/lib.rs", Edition2018),
-        // * custom_build_target("build-script-build", "anyhow-1.0.57/build.rs", Edition2018),
-        //   mode: RunCustomBuild,
-        // * custom_build_target("build-script-build", "anyhow-1.0.57/build.rs", Edition2018),
-        //   mode: Build,
+    let one_dep_layer = units.iter().filter(|(unit, deps)| {
+        unit.target.is_lib()
+            && !no_deps.contains(unit)
+            && deps.iter().all(|dep| no_deps.contains(&dep.unit))
+    });
+
+    for (unit, deps) in one_dep_layer {
         println!(
             "{} {}",
             unit.pkg.package_id().name(),
             unit.pkg.package_id().version()
         );
-        // dbg!(deps);
 
-        build_scratch_package(unit, &Vec::new())?;
+        build_scratch_package(unit, deps)?;
     }
 
     Ok(())
