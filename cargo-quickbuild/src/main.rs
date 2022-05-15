@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::io::Write;
 use std::ops::Deref;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::{error::Error, ffi::OsStr, process::Command};
 
 use cargo::core::compiler::unit_graph::UnitDep;
@@ -53,32 +53,37 @@ fn unpack_or_build_packages() -> Result<(), Box<dyn Error>> {
 
         for (unit, deps) in current_level {
             computed_deps.insert(unit, deps);
-            build_scratch_package(&computed_deps, unit)?;
+            build_tarball_if_not_exists(&computed_deps, unit)?;
         }
     }
 
     Ok(())
 }
 
-fn build_scratch_package(
+fn build_tarball_if_not_exists(
     computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>,
     unit: &Unit,
 ) -> Result<(), Box<dyn Error>> {
-    let deps = *computed_deps.get(unit).unwrap();
+    let deps_string = units_to_cargo_toml_deps(computed_deps, unit);
+
+    let tarball_path = get_tarball_path(computed_deps, unit);
+    println!("\n{tarball_path:?} deps:\n{}", deps_string);
+    if tarball_path.exists() {
+        println!("{tarball_path:?} already exists");
+        return Ok(());
+    }
+    build_tarball(computed_deps, unit)
+}
+
+// FIXME: put a cache on this?
+fn get_tarball_path(computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>, unit: &Unit) -> PathBuf {
     let deps_string = units_to_cargo_toml_deps(computed_deps, unit);
 
     let digest = hex_digest(Algorithm::SHA256, deps_string.as_bytes());
-
     let package_name = unit.deref().pkg.name();
     let package_version = unit.deref().pkg.version();
-    let tarball_prefix = format!("{package_name}-{package_version}-{digest}");
-    println!("\n{tarball_prefix} deps:\n{}", deps_string);
 
-    for dep in deps {
-        build_scratch_package(computed_deps, &dep.unit)?;
-    }
-    build_tarball(deps_string, tarball_prefix)?;
-    Ok(())
+    Path::new("/Users/alsuren/tmp").join(format!("{package_name}-{package_version}-{digest}.tar"))
 }
 
 fn units_to_cargo_toml_deps(computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>, unit: &Unit) -> String {
@@ -112,25 +117,30 @@ fn flatten_deps<'a>(
     )
 }
 
-fn build_tarball(deps_string: String, tarball_prefix: String) -> Result<(), Box<dyn Error>> {
-    let mut stats = Stats::new();
-    let tarball_path = Path::new("/Users/alsuren/tmp").join(format!("{tarball_prefix}.tar"));
-    if tarball_path.exists() {
-        println!("{tarball_path:?} already exists");
-        return Ok(());
-    }
+fn build_tarball(
+    computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>,
+    unit: &Unit,
+) -> Result<(), Box<dyn Error>> {
     let tempdir = TempDir::new("cargo-quickbuild-scratchpad")?;
     let scratch_dir = tempdir.path().join("cargo-quickbuild-scratchpad");
 
+    // FIXME: this stats tracking is making it awkward to refactor this method into multiple bits.
+    // It might be better to make a Context struct that contains computed_deps and stats or something?
+    let mut stats = Stats::new();
+
+    // FIXME: do this by hand or something?
     cargo_init(&scratch_dir)?;
     stats.init_done();
 
+    unpack_tarballs_of_deps(computed_deps, unit, &scratch_dir)?;
+
+    let deps_string = units_to_cargo_toml_deps(computed_deps, unit);
     add_deps_to_manifest_and_run_cargo_build(deps_string, &scratch_dir)?;
     stats.build_done();
 
     // we write to a temporary location and then mv because mv is an atomic operation in posix
     let temp_tarball_path = tempdir.path().join("target.tar");
-    let temp_stats_path = tarball_path.with_extension("stats.json");
+    let temp_stats_path = temp_tarball_path.with_extension("stats.json");
 
     tar_target_dir(scratch_dir, &temp_tarball_path)?;
     stats.tar_done();
@@ -139,6 +149,8 @@ fn build_tarball(deps_string: String, tarball_prefix: String) -> Result<(), Box<
         std::fs::File::create(&temp_stats_path)?,
         &ComputedStats::from(stats),
     )?;
+
+    let tarball_path = get_tarball_path(computed_deps, unit);
     std::fs::rename(&temp_stats_path, tarball_path.with_extension("stats.json"))?;
     std::fs::rename(&temp_tarball_path, &tarball_path)?;
     println!("wrote to {tarball_path:?}");
@@ -149,6 +161,35 @@ fn build_tarball(deps_string: String, tarball_prefix: String) -> Result<(), Box<
 fn cargo_init(scratch_dir: &std::path::PathBuf) -> Result<(), Box<dyn Error>> {
     command(["cargo", "init"])
         .arg(scratch_dir)
+        .status()?
+        .exit_ok_ext()?;
+
+    Ok(())
+}
+
+fn unpack_tarballs_of_deps(
+    computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>,
+    unit: &Unit,
+    scratch_dir: &Path,
+) -> Result<(), Box<dyn Error>> {
+    for dep in flatten_deps(computed_deps, unit) {
+        // These should be *guaranteed* to already be built.
+        untar_target_dir(computed_deps, &dep, scratch_dir)?;
+    }
+
+    Ok(())
+}
+
+fn untar_target_dir(
+    computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>,
+    unit: &Unit,
+    scratch_dir: &Path,
+) -> Result<(), Box<dyn Error>> {
+    let tarball_path = get_tarball_path(computed_deps, unit);
+    assert!(tarball_path.exists());
+    println!("unpacking {tarball_path:?}");
+    command(["tar", "-xf", &tarball_path.to_string_lossy(), "target"])
+        .current_dir(&scratch_dir)
         .status()?
         .exit_ok_ext()?;
 
@@ -181,6 +222,7 @@ fn tar_target_dir(
     temp_tarball_path: &std::path::PathBuf,
 ) -> Result<(), Box<dyn Error>> {
     // FIXME: cargo already bundles tar as a dep, so just use that
+    // FIXME: each tarball contains duplicates of all of the dependencies that we just unpacked already
     command([
         "tar",
         "-f",
