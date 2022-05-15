@@ -146,8 +146,9 @@ fn build_tarball(deps_string: String, tarball_prefix: String) -> Result<(), Box<
         return Ok(());
     }
     let tempdir = TempDir::new("cargo-quickbuild-scratchpad")?;
+    let scratch_dir = tempdir.path().join("cargo-quickbuild-scratchpad");
 
-    let scratch_dir = cargo_init(&tempdir)?;
+    cargo_init(&scratch_dir)?;
     stats.init_done();
 
     add_deps_to_manifest_and_run_cargo_build(deps_string, &scratch_dir)?;
@@ -171,16 +172,14 @@ fn build_tarball(deps_string: String, tarball_prefix: String) -> Result<(), Box<
     Ok(())
 }
 
-fn cargo_init(tempdir: &TempDir) -> Result<std::path::PathBuf, Box<dyn Error>> {
-    let scratch_dir = tempdir.path().join("cargo-quickbuild-scratchpad");
+fn cargo_init(scratch_dir: &std::path::PathBuf) -> Result<(), Box<dyn Error>> {
     let init_ok = command(["cargo", "init"])
-        .arg(&scratch_dir)
+        .arg(scratch_dir)
         .status()?
         .success();
-    if !init_ok {
+    Ok(if !init_ok {
         Err("cargo init failed")?;
-    }
-    Ok(scratch_dir)
+    })
 }
 
 fn add_deps_to_manifest_and_run_cargo_build(
