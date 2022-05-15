@@ -1,3 +1,5 @@
+mod std_ext;
+
 use std::fmt::Write as _;
 use std::io::Write;
 use std::ops::Deref;
@@ -12,6 +14,8 @@ use cargo::ops::{create_bcx, CompileOptions};
 use cargo::Config;
 use crypto_hash::{hex_digest, Algorithm};
 use tempdir::TempDir;
+
+use std_ext::ExitStatusExt;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut args: Vec<_> = std::env::args().collect();
@@ -173,13 +177,12 @@ fn build_tarball(deps_string: String, tarball_prefix: String) -> Result<(), Box<
 }
 
 fn cargo_init(scratch_dir: &std::path::PathBuf) -> Result<(), Box<dyn Error>> {
-    let init_ok = command(["cargo", "init"])
+    command(["cargo", "init"])
         .arg(scratch_dir)
         .status()?
-        .success();
-    Ok(if !init_ok {
-        Err("cargo init failed")?;
-    })
+        .exit_ok_ext()?;
+
+    Ok(())
 }
 
 fn add_deps_to_manifest_and_run_cargo_build(
@@ -195,36 +198,31 @@ fn add_deps_to_manifest_and_run_cargo_build(
     cargo_toml.flush()?;
     drop(cargo_toml);
     command(["cat"]).arg(&cargo_toml_path).status()?;
-    let cargo_build_ok = command(["cargo", "build", "--offline"])
+    command(["cargo", "build", "--offline"])
         .current_dir(scratch_dir)
         .status()?
-        .success();
-    Ok(if !cargo_build_ok {
-        Err("cargo build failed")?;
-    })
+        .exit_ok_ext()?;
+
+    Ok(())
 }
 
 fn tar_target_dir(
     scratch_dir: std::path::PathBuf,
     temp_tarball_path: &std::path::PathBuf,
 ) -> Result<(), Box<dyn Error>> {
-    Ok(
-        if !command([
-            "tar",
-            "-f",
-            &temp_tarball_path.to_string_lossy(),
-            "--format=pax",
-            "-c",
-            "target",
-        ])
-        .current_dir(&scratch_dir)
-        .status()?
-        .success()
-        {
-            // FIXME: there is an unstable method for this: add it as an extension method?
-            Err("tar failed")?;
-        },
-    )
+    command([
+        "tar",
+        "-f",
+        &temp_tarball_path.to_string_lossy(),
+        "--format=pax",
+        "-c",
+        "target",
+    ])
+    .current_dir(&scratch_dir)
+    .status()?
+    .exit_ok_ext()?;
+
+    Ok(())
 }
 // fn run_cargo_build(args: Vec<String>) -> Result<(), Box<dyn Error>> {
 //     let mut command = Command::new("cargo");
