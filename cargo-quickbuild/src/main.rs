@@ -1,10 +1,10 @@
+mod stats;
 mod std_ext;
 
 use std::fmt::Write as _;
 use std::io::Write;
 use std::ops::Deref;
 use std::path::Path;
-use std::time::{Duration, Instant};
 use std::{error::Error, ffi::OsStr, process::Command};
 
 use cargo::core::compiler::unit_graph::UnitDep;
@@ -16,6 +16,8 @@ use crypto_hash::{hex_digest, Algorithm};
 use tempdir::TempDir;
 
 use std_ext::ExitStatusExt;
+
+use crate::stats::{ComputedStats, Stats};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut args: Vec<_> = std::env::args().collect();
@@ -97,49 +99,6 @@ fn units_to_cargo_toml_deps(unit: &Unit, deps: &Vec<UnitDep>) -> String {
         ).unwrap();
     });
     deps_string
-}
-
-struct Stats {
-    start: Instant,
-    init_done: Option<Instant>,
-    build_done: Option<Instant>,
-    tar_done: Option<Instant>,
-}
-impl Stats {
-    fn new() -> Self {
-        Self {
-            start: Instant::now(),
-            init_done: None,
-            build_done: None,
-            tar_done: None,
-        }
-    }
-    fn init_done(&mut self) {
-        self.init_done.replace(Instant::now());
-    }
-    fn build_done(&mut self) {
-        self.build_done.replace(Instant::now());
-    }
-    fn tar_done(&mut self) {
-        self.tar_done.replace(Instant::now());
-    }
-}
-
-#[derive(serde::Serialize)]
-struct ComputedStats {
-    init_duration: Duration,
-    build_duration: Duration,
-    tar_duration: Duration,
-}
-
-impl From<Stats> for ComputedStats {
-    fn from(stats: Stats) -> Self {
-        Self {
-            init_duration: stats.init_done.unwrap() - stats.start,
-            build_duration: stats.build_done.unwrap() - stats.init_done.unwrap(),
-            tar_duration: stats.tar_done.unwrap() - stats.build_done.unwrap(),
-        }
-    }
 }
 
 fn build_tarball(deps_string: String, tarball_prefix: String) -> Result<(), Box<dyn Error>> {
