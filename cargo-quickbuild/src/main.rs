@@ -19,7 +19,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         args.remove(0);
     }
     unpack_or_build_packages()?;
-    // run_cargo_build(args)?;
     Ok(())
 }
 fn unpack_or_build_packages() -> Result<(), Box<dyn Error>> {
@@ -147,6 +146,32 @@ fn build_tarball(deps_string: String, tarball_prefix: String) -> Result<(), Box<
         return Ok(());
     }
     let tempdir = TempDir::new("cargo-quickbuild-scratchpad")?;
+
+    let scratch_dir = cargo_init(&tempdir)?;
+    stats.init_done();
+
+    add_deps_to_manifest_and_run_cargo_build(deps_string, &scratch_dir)?;
+    stats.build_done();
+
+    // we write to a temporary location and then mv because mv is an atomic operation in posix
+    let temp_tarball_path = tempdir.path().join("target.tar");
+    let temp_stats_path = tarball_path.with_extension("stats.json");
+
+    tar_target_dir(scratch_dir, &temp_tarball_path)?;
+    stats.tar_done();
+
+    serde_json::to_writer_pretty(
+        std::fs::File::create(&temp_stats_path)?,
+        &ComputedStats::from(stats),
+    )?;
+    std::fs::rename(&temp_stats_path, tarball_path.with_extension("stats.json"))?;
+    std::fs::rename(&temp_tarball_path, &tarball_path)?;
+    println!("wrote to {tarball_path:?}");
+
+    Ok(())
+}
+
+fn cargo_init(tempdir: &TempDir) -> Result<std::path::PathBuf, Box<dyn Error>> {
     let scratch_dir = tempdir.path().join("cargo-quickbuild-scratchpad");
     let init_ok = command(["cargo", "init"])
         .arg(&scratch_dir)
@@ -155,8 +180,13 @@ fn build_tarball(deps_string: String, tarball_prefix: String) -> Result<(), Box<
     if !init_ok {
         Err("cargo init failed")?;
     }
-    stats.init_done();
+    Ok(scratch_dir)
+}
 
+fn add_deps_to_manifest_and_run_cargo_build(
+    deps_string: String,
+    scratch_dir: &std::path::PathBuf,
+) -> Result<(), Box<dyn Error>> {
     let cargo_toml_path = scratch_dir.join("Cargo.toml");
     let mut cargo_toml = std::fs::OpenOptions::new()
         .write(true)
@@ -166,46 +196,36 @@ fn build_tarball(deps_string: String, tarball_prefix: String) -> Result<(), Box<
     cargo_toml.flush()?;
     drop(cargo_toml);
     command(["cat"]).arg(&cargo_toml_path).status()?;
-    // FIXME: run cargo fetch at the top level to make sure we can get away with --offline here.
     let cargo_build_ok = command(["cargo", "build", "--offline"])
-        .current_dir(&scratch_dir)
+        .current_dir(scratch_dir)
         .status()?
         .success();
-    if !cargo_build_ok {
+    Ok(if !cargo_build_ok {
         Err("cargo build failed")?;
-    }
-    stats.build_done();
+    })
+}
 
-    // we write to a temporary location and then mv because mv is an atomic operation in posix
-    let temp_tarball_path = tempdir.path().join("target.tar");
-    let temp_stats_path = tarball_path.with_extension("stats.json");
-
-    // tar --format=pax -c target > target.tar
-    if !command([
-        "tar",
-        "-f",
-        &temp_tarball_path.to_string_lossy(),
-        "--format=pax",
-        "-c",
-        "target",
-    ])
-    .current_dir(&scratch_dir)
-    .status()?
-    .success()
-    {
-        // FIXME: there is an unstable method for this: add it as an extension method?
-        Err("tar failed")?;
-    }
-    stats.tar_done();
-    serde_json::to_writer_pretty(
-        std::fs::File::create(&temp_stats_path)?,
-        &ComputedStats::from(stats),
-    )?;
-    std::fs::rename(&temp_tarball_path, &tarball_path)?;
-    std::fs::rename(&temp_stats_path, tarball_path.with_extension("stats.json"))?;
-    println!("wrote to {tarball_path:?}");
-
-    Ok(())
+fn tar_target_dir(
+    scratch_dir: std::path::PathBuf,
+    temp_tarball_path: &std::path::PathBuf,
+) -> Result<(), Box<dyn Error>> {
+    Ok(
+        if !command([
+            "tar",
+            "-f",
+            &temp_tarball_path.to_string_lossy(),
+            "--format=pax",
+            "-c",
+            "target",
+        ])
+        .current_dir(&scratch_dir)
+        .status()?
+        .success()
+        {
+            // FIXME: there is an unstable method for this: add it as an extension method?
+            Err("tar failed")?;
+        },
+    )
 }
 // fn run_cargo_build(args: Vec<String>) -> Result<(), Box<dyn Error>> {
 //     let mut command = Command::new("cargo");
