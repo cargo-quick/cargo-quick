@@ -215,6 +215,7 @@ version = "0.1.0"
 dependencies = [
  "cargo",
  "crypto-hash",
+ "itertools",
  "serde",
  "serde_json",
  "tempdir",

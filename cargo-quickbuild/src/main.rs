@@ -14,6 +14,7 @@ use cargo::core::Workspace;
 use cargo::ops::{create_bcx, CompileOptions};
 use cargo::Config;
 use crypto_hash::{hex_digest, Algorithm};
+use itertools::Itertools;
 use tempdir::TempDir;
 
 use std_ext::ExitStatusExt;
@@ -38,19 +39,32 @@ fn unpack_or_build_packages() -> Result<(), Box<dyn Error>> {
     let interner = UnitInterner::new();
     let bcx = create_bcx(&ws, &options, &interner)?;
 
-    let mut units: Vec<(&Unit, &Vec<UnitDep>)> = bcx.unit_graph.iter().collect();
+    let mut units: Vec<(&Unit, &Vec<UnitDep>)> = bcx
+        .unit_graph
+        .iter()
+        .filter(|(unit, _)| unit.target.is_lib())
+        .collect();
     units.sort_unstable();
 
     let mut computed_deps = BTreeMap::<&Unit, &Vec<UnitDep>>::default();
 
-    for level in 0..=2 {
+    for level in 0..=10 {
         println!("START OF LEVEL {level}");
         let current_level;
         // libs with no lib unbuilt deps and no build.rs
         (current_level, units) = units.iter().partition(|(unit, deps)| {
-            unit.target.is_lib() && deps.iter().all(|dep| computed_deps.contains_key(&dep.unit))
+            unit.target.is_lib()
+                && deps
+                    .iter()
+                    .all(|dep| (!dep.unit.target.is_lib()) || computed_deps.contains_key(&dep.unit))
         });
 
+        if current_level.is_empty() && !units.is_empty() {
+            println!(
+                "We haven't compiled everything yet, but there is nothing left to do\n\n {units:#?}"
+            );
+            Err("current_level.is_empty() && !units.is_empty()")?;
+        }
         for (unit, deps) in current_level {
             computed_deps.insert(unit, deps);
             build_tarball_if_not_exists(&computed_deps, unit)?;
@@ -91,6 +105,7 @@ fn units_to_cargo_toml_deps(computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>, unit
     std::iter::once(unit).chain(
         flatten_deps(computed_deps, unit)
     )
+    .unique()
     .for_each(|unit| {
         let package = &unit.deref().pkg;
         let name = package.name();
@@ -98,7 +113,6 @@ fn units_to_cargo_toml_deps(computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>, unit
         let features = &unit.deref().features;
         // FIXME: this will probably break when we have multiple versions  of the same
         // package in the tree. Could we include version.replace('.', '_') or something?
-        // We probably also want to deduplicate by unit equality.
         writeln!(deps_string,
             r#"{name} = {{ version = "={version}", features = {features:?}, default-features = false }}"#
         ).unwrap();
@@ -110,10 +124,23 @@ fn flatten_deps<'a>(
     computed_deps: &'a BTreeMap<&Unit, &Vec<UnitDep>>,
     unit: &'a Unit,
 ) -> Box<dyn Iterator<Item = &'a Unit> + 'a> {
+    if !unit.target.is_lib() {
+        return Box::new(std::iter::empty());
+    }
     Box::new(
-        (&*computed_deps.get(unit).unwrap()).iter().flat_map(|dep| {
-            std::iter::once(&dep.unit).chain(flatten_deps(computed_deps, &dep.unit))
-        }),
+        (&*computed_deps.get(unit).unwrap())
+            .iter()
+            .map(|dep| &dep.unit)
+            .filter(|dep| dep.target.is_lib())
+            .flat_map(move |dep| {
+                assert!(dep.target.is_lib());
+                assert_ne!(dep, unit);
+                assert_ne!(
+                    dep.pkg, unit.pkg,
+                    "package clash between:\n{dep:?}\nand\n{unit:?}"
+                );
+                std::iter::once(dep).chain(flatten_deps(computed_deps, dep))
+            }),
     )
 }
 
@@ -172,7 +199,7 @@ fn unpack_tarballs_of_deps(
     unit: &Unit,
     scratch_dir: &Path,
 ) -> Result<(), Box<dyn Error>> {
-    for dep in flatten_deps(computed_deps, unit) {
+    for dep in flatten_deps(computed_deps, unit).unique() {
         // These should be *guaranteed* to already be built.
         untar_target_dir(computed_deps, &dep, scratch_dir)?;
     }
@@ -186,7 +213,7 @@ fn untar_target_dir(
     scratch_dir: &Path,
 ) -> Result<(), Box<dyn Error>> {
     let tarball_path = get_tarball_path(computed_deps, unit);
-    assert!(tarball_path.exists());
+    assert!(tarball_path.exists(), "{tarball_path:?} does not exist");
     println!("unpacking {tarball_path:?}");
     command(["tar", "-xf", &tarball_path.to_string_lossy(), "target"])
         .current_dir(&scratch_dir)
@@ -212,7 +239,15 @@ fn add_deps_to_manifest_and_run_cargo_build(
     command(["cargo", "build", "--offline"])
         .current_dir(scratch_dir)
         .status()?
-        .exit_ok_ext()?;
+        .exit_ok_ext()
+        .or_else(|_| {
+            // this is for crossbeam-utils = "=0.8.3", which might have been yanked?
+            println!("retrying without --offline");
+            command(["cargo", "build"])
+                .current_dir(scratch_dir)
+                .status()?
+                .exit_ok_ext()
+        })?;
 
     Ok(())
 }
