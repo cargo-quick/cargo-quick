@@ -224,13 +224,6 @@ fn tar_target_dir(
 
     Ok(())
 }
-// fn run_cargo_build(args: Vec<String>) -> Result<(), Box<dyn Error>> {
-//     let mut command = Command::new("cargo");
-//     command.arg("build").args(args);
-//     println!("would run {command:?}");
-
-//     Ok(())
-// }
 
 fn command(args: impl IntoIterator<Item = impl AsRef<OsStr>>) -> Command {
     let mut args = args.into_iter();
