@@ -97,7 +97,10 @@ fn get_tarball_path(computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>, unit: &Unit)
     let package_name = unit.deref().pkg.name();
     let package_version = unit.deref().pkg.version();
 
-    Path::new("/Users/alsuren/tmp").join(format!("{package_name}-{package_version}-{digest}.tar"))
+    let tarball_dir = home::home_dir().unwrap().join("tmp/quick");
+    std::fs::create_dir_all(&tarball_dir).unwrap();
+
+    tarball_dir.join(format!("{package_name}-{package_version}-{digest}.tar"))
 }
 
 fn units_to_cargo_toml_deps(computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>, unit: &Unit) -> String {
