@@ -3,7 +3,6 @@ mod std_ext;
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
-use std::fs::remove_dir_all;
 use std::io::Write;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
@@ -149,31 +148,12 @@ fn flatten_deps<'a>(
     )
 }
 
-// HACK: keep tempdir location fixed to see if that fixes compilation issues.
-struct FixedTempDir {
-    path: PathBuf,
-}
-
-impl FixedTempDir {
-    fn new(name: &str) -> std::io::Result<Self> {
-        let path = std::env::temp_dir().join(name);
-        std::fs::create_dir(&path)?;
-        Ok(FixedTempDir { path })
-    }
-}
-
-impl Drop for FixedTempDir {
-    fn drop(&mut self) {
-        let _ = remove_dir_all(&self.path);
-    }
-}
-
 fn build_tarball(
     computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>,
     unit: &Unit,
 ) -> Result<(), Box<dyn Error>> {
-    let tempdir = FixedTempDir::new("cargo-quickbuild-scratchpad")?;
-    let scratch_dir = tempdir.path.join("cargo-quickbuild-scratchpad");
+    let tempdir = TempDir::new("cargo-quickbuild-scratchpad")?;
+    let scratch_dir = tempdir.path().join("cargo-quickbuild-scratchpad");
 
     // FIXME: this stats tracking is making it awkward to refactor this method into multiple bits.
     // It might be better to make a Context struct that contains computed_deps and stats or something?
@@ -191,7 +171,7 @@ fn build_tarball(
     stats.build_done();
 
     // we write to a temporary location and then mv because mv is an atomic operation in posix
-    let temp_tarball_path = tempdir.path.join("target.tar");
+    let temp_tarball_path = tempdir.path().join("target.tar");
     let temp_stats_path = temp_tarball_path.with_extension("stats.json");
 
     tar_target_dir(scratch_dir, &temp_tarball_path)?;
