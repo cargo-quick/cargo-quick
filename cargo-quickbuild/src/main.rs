@@ -244,15 +244,18 @@ fn add_deps_to_manifest_and_run_cargo_build(
     command(["cargo", "build", "--offline"])
         .current_dir(scratch_dir)
         .status()?
-        .exit_ok_ext()
-        .or_else(|_| {
-            // this is for crossbeam-utils = "=0.8.3", which might have been yanked?
-            println!("retrying without --offline");
-            command(["cargo", "build"])
-                .current_dir(scratch_dir)
-                .status()?
-                .exit_ok_ext()
-        })?;
+        .exit_ok_ext()?;
+
+    command([
+        "cargo",
+        "clean",
+        "--offline",
+        "--package",
+        "cargo-quickbuild-scratchpad",
+    ])
+    .current_dir(scratch_dir)
+    .status()?
+    .exit_ok_ext()?;
 
     Ok(())
 }
