@@ -241,6 +241,18 @@ fn add_deps_to_manifest_and_run_cargo_build(
     cargo_toml.flush()?;
     drop(cargo_toml);
 
+    // HACK: jobserver causes problems and I'm not sure why. For now, jobserver is depended on by:
+    // cargo, cargo-util, cc (and therefore basically all *-sys packages).
+    // By nuking it, we are forcing cargo to recompile huge chunks of the tree,
+    // but I have a feeling that the expensive chunks of tree are likely to be the pure rust bits anyway,
+    // so maybe this is fine for now?
+    if deps_string.contains("jobserver") {
+        command(["cargo", "clean", "--offline", "--package", "jobserver"])
+            .current_dir(scratch_dir)
+            .status()?
+            .exit_ok_ext()?;
+    }
+
     command(["cargo", "build", "--offline"])
         .current_dir(scratch_dir)
         .status()?
