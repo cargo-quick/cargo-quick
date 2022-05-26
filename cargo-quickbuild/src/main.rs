@@ -3,6 +3,7 @@ mod std_ext;
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
+use std::fs::File;
 use std::io::Write;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
@@ -15,6 +16,7 @@ use cargo::ops::{create_bcx, CompileOptions};
 use cargo::Config;
 use crypto_hash::{hex_digest, Algorithm};
 use itertools::Itertools;
+use tar::{Archive, Builder};
 use tempdir::TempDir;
 
 use std_ext::ExitStatusExt;
@@ -220,10 +222,8 @@ fn untar_target_dir(
     let tarball_path = get_tarball_path(computed_deps, unit);
     assert!(tarball_path.exists(), "{tarball_path:?} does not exist");
     println!("unpacking {tarball_path:?}");
-    command(["tar", "-xf", &tarball_path.to_string_lossy(), "target"])
-        .current_dir(&scratch_dir)
-        .status()?
-        .exit_ok_ext()?;
+    // FIXME: return BTreeSet of paths or something, by unpacking what Archive::_unpack() does internally
+    Archive::new(File::open(tarball_path)?).unpack(scratch_dir)?;
 
     Ok(())
 }
@@ -264,19 +264,17 @@ fn tar_target_dir(
     scratch_dir: std::path::PathBuf,
     temp_tarball_path: &std::path::PathBuf,
 ) -> Result<(), Box<dyn Error>> {
-    // FIXME: cargo already bundles tar as a dep, so just use that
     // FIXME: each tarball contains duplicates of all of the dependencies that we just unpacked already
-    command([
-        "tar",
-        "-f",
-        &temp_tarball_path.to_string_lossy(),
-        "--format=pax",
-        "-c",
-        "target",
-    ])
-    .current_dir(&scratch_dir)
-    .status()?
-    .exit_ok_ext()?;
+    // Either inline whatever append_dir_all() is doing and add filtering, or delete files before making the tarball
+    let mut tar = Builder::new(
+        File::options()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(temp_tarball_path)?,
+    );
+    tar.append_dir_all("target", scratch_dir.join("target"))?;
+    tar.finish()?;
 
     Ok(())
 }
