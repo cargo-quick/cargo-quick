@@ -116,8 +116,6 @@ fn units_to_cargo_toml_deps(computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>, unit
         let name = package.name();
         let version = package.version().to_string();
         let features = &unit.deref().features;
-        // FIXME: this will probably break when we have multiple versions  of the same
-        // package in the tree. Could we include version.replace('.', '_') or something?
         let safe_version = version.replace(|c: char| !c.is_alphanumeric(), "_");
         writeln!(deps_string,
             r#"{name}_{safe_version} = {{ package = "{name}", version = "={version}", features = {features:?}, default-features = false }}"#
