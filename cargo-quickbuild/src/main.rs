@@ -7,8 +7,9 @@ use std::fmt::Write as _;
 use std::io::Write;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
-use std::{error::Error, ffi::OsStr, process::Command};
+use std::{ffi::OsStr, process::Command};
 
+use anyhow::Result;
 use cargo::core::compiler::unit_graph::UnitDep;
 use cargo::core::compiler::{CompileMode, Unit, UnitInterner};
 use cargo::core::Workspace;
@@ -22,7 +23,7 @@ use std_ext::ExitStatusExt;
 
 use crate::stats::{ComputedStats, Stats};
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<()> {
     let mut args: Vec<_> = std::env::args().collect();
     if args[0] == "quickbuild" {
         args.remove(0);
@@ -31,7 +32,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn unpack_or_build_packages() -> Result<(), Box<dyn Error>> {
+fn unpack_or_build_packages() -> Result<()> {
     let config = Config::default()?;
 
     // FIXME: compile cargo in release mode
@@ -64,7 +65,7 @@ fn unpack_or_build_packages() -> Result<(), Box<dyn Error>> {
             println!(
                 "We haven't compiled everything yet, but there is nothing left to do\n\n {units:#?}"
             );
-            Err("current_level.is_empty() && !units.is_empty()")?;
+            anyhow::bail!("current_level.is_empty() && !units.is_empty()");
         }
         for (unit, deps) in current_level {
             computed_deps.insert(unit, deps);
@@ -78,7 +79,7 @@ fn unpack_or_build_packages() -> Result<(), Box<dyn Error>> {
 fn build_tarball_if_not_exists(
     computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>,
     unit: &Unit,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<()> {
     let deps_string = units_to_cargo_toml_deps(computed_deps, unit);
 
     let tarball_path = get_tarball_path(computed_deps, unit);
@@ -147,10 +148,7 @@ fn flatten_deps<'a>(
     )
 }
 
-fn build_tarball(
-    computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>,
-    unit: &Unit,
-) -> Result<(), Box<dyn Error>> {
+fn build_tarball(computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>, unit: &Unit) -> Result<()> {
     let tempdir = TempDir::new("cargo-quickbuild-scratchpad")?;
     let scratch_dir = tempdir.path().join("cargo-quickbuild-scratchpad");
 
@@ -189,7 +187,7 @@ fn build_tarball(
     Ok(())
 }
 
-fn cargo_init(scratch_dir: &std::path::PathBuf) -> Result<(), Box<dyn Error>> {
+fn cargo_init(scratch_dir: &std::path::PathBuf) -> Result<()> {
     command(["cargo", "init"])
         .arg(scratch_dir)
         .status()?
@@ -202,7 +200,7 @@ fn unpack_tarballs_of_deps(
     computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>,
     unit: &Unit,
     scratch_dir: &Path,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<()> {
     for dep in flatten_deps(computed_deps, unit).unique() {
         // These should be *guaranteed* to already be built.
         archive::untar_target_dir(computed_deps, &dep, scratch_dir)?;
@@ -214,7 +212,7 @@ fn unpack_tarballs_of_deps(
 fn add_deps_to_manifest_and_run_cargo_build(
     deps_string: String,
     scratch_dir: &std::path::PathBuf,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<()> {
     let cargo_toml_path = scratch_dir.join("Cargo.toml");
     let mut cargo_toml = std::fs::OpenOptions::new()
         .write(true)
