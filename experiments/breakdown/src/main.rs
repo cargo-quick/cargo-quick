@@ -137,7 +137,7 @@ mod test {
 
     fn get_graph() -> Graph {
         let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        path.push("../Cargo.lock");
+        path.push("../../Cargo.lock");
         let lockfile = Lockfile::load(path).unwrap();
         let tree = lockfile.dependency_tree().unwrap();
         tree.graph().clone()
@@ -184,7 +184,7 @@ mod test {
         // I'm not convinced that it's stable.
         assert_eq!(
             hash_packages(&packages),
-            "adb262a5beec5a7c0740a7e1129fadab5a5be28b846cd7be59f7d46582092be4"
+            "d545a9f04900c95eabe1bfa8ce914be2d692e64e694d08d243109945b4db399d"
         );
     }
 
