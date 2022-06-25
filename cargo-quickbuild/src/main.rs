@@ -1,4 +1,5 @@
 mod archive;
+mod pax;
 mod stats;
 mod std_ext;
 

@@ -10,6 +10,8 @@ use cargo::core::compiler::Unit;
 use filetime::FileTime;
 use tar::{Archive, Builder, Entry, EntryType};
 
+use crate::pax::{BuilderExt, PaxBuilder};
+
 use super::get_tarball_path;
 
 pub fn tar_target_dir(
@@ -45,15 +47,32 @@ pub fn tar_target_dir(
                 log::debug!(
                     "adding {dest:?} because its mtime has changed from {timestamp:?} to {mtime:?}"
                 );
-                tar.append_path_with_name(path, dest)?;
+                append_path_with_mtime(&mut tar, path, dest, mtime)?;
             }
             None => {
-                tar.append_path_with_name(path, dest)?;
+                append_path_with_mtime(&mut tar, path, dest, mtime)?;
             }
         }
     }
     tar.finish()?;
 
+    Ok(())
+}
+
+fn append_path_with_mtime(
+    tar: &mut Builder<File>,
+    path: &Path,
+    dest: &Path,
+    mtime: FileTime,
+) -> Result<(), anyhow::Error> {
+    let mut pax = PaxBuilder::new();
+    pax.add(
+        "mtime",
+        &format!("{}.{:09}", mtime.unix_seconds(), mtime.nanoseconds()),
+    );
+    tar.append_pax_extensions(&pax)?;
+
+    tar.append_path_with_name(path, dest)?;
     Ok(())
 }
 
@@ -90,34 +109,56 @@ fn tracked_unpack<R: Read>(
         if file.header().entry_type() == EntryType::Directory {
             directories.push(file);
         } else {
-            insert_timestamp(&mut file_timestamps, &file)?;
+            let mtime = get_high_res_mtime(&mut file)?;
+            insert_timestamp(&mut file_timestamps, &file, mtime)?;
+            // FIXME: upstream this into the tar crate
             file.unpack_in(dst)?;
+            filetime::set_file_times(dst.join(file.path()?), mtime, mtime)?;
         }
     }
     for mut dir in directories {
-        insert_timestamp(&mut file_timestamps, &dir)?;
+        let mtime = get_high_res_mtime(&mut dir)?;
+        insert_timestamp(&mut file_timestamps, &dir, mtime)?;
         dir.unpack_in(dst)?;
+        filetime::set_file_times(dst.join(dir.path()?), mtime, mtime)?;
     }
     Ok(file_timestamps)
+}
+
+fn get_high_res_mtime<R: Read>(file: &mut Entry<R>) -> Result<FileTime, anyhow::Error> {
+    let mtime = file
+        .pax_extensions()?
+        .expect("refusing to unpack tarball with low-resolution mtimes")
+        .into_iter()
+        .find(|e| e.as_ref().unwrap().key() == Ok("mtime"))
+        .unwrap()
+        .unwrap()
+        .value()?;
+    let (seconds, nanos) = mtime.split_once('.').unwrap();
+    let seconds = seconds.parse()?;
+    // right pad with 0s - https://docs.rs/pad/0.1.6/pad/#padding-in-the-stdlib
+    let nanos = format!("{nanos:0<9}")
+        .parse()
+        .with_context(|| format!("parsing {nanos:?}"))?;
+    Ok(FileTime::from_unix_time(seconds, nanos))
 }
 
 fn insert_timestamp<R: Read>(
     file_timestamps: &mut BTreeMap<PathBuf, FileTime>,
     file: &Entry<R>,
+    mtime: FileTime,
 ) -> Result<(), anyhow::Error> {
     let path = file.path()?.clone().into_owned();
-    // FIXME: pack and unpack high resolution mtimes using what's in PAX extension headers.
-    let time = FileTime::from_unix_time(file.header().mtime()? as i64, 0);
     match file_timestamps.entry(path) {
         btree_map::Entry::Vacant(entry) => {
-            entry.insert(time);
+            entry.insert(mtime);
             Ok(())
         }
         btree_map::Entry::Occupied(entry) => anyhow::bail!(
             "duplicate entry for {:?} ({:?}) when trying to insert {:?}",
             entry.key(),
             entry.get(),
-            time,
+            mtime,
         ),
     }
 }
