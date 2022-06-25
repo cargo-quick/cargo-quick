@@ -210,6 +210,7 @@ dependencies = [
  "anyhow",
  "cargo",
  "crypto-hash",
+ "filetime",
  "home",
  "itertools",
  "serde",
