@@ -11,7 +11,7 @@ use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::{ffi::OsStr, process::Command};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use cargo::core::compiler::unit_graph::UnitDep;
 use cargo::core::compiler::{CompileMode, Unit, UnitInterner};
 use cargo::core::Workspace;
@@ -174,9 +174,9 @@ struct FixedTempDir {
 }
 
 impl FixedTempDir {
-    fn new(name: &str) -> std::io::Result<Self> {
+    fn new(name: &str) -> Result<Self> {
         let path = std::env::temp_dir().join(name);
-        std::fs::create_dir(&path)?;
+        std::fs::create_dir(&path).with_context(|| format!("making tempdir in {path:?}"))?;
         Ok(FixedTempDir { path })
     }
 }
