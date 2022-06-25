@@ -247,7 +247,7 @@ fn add_deps_to_manifest_and_run_cargo_build(
     cargo_toml.flush()?;
     drop(cargo_toml);
 
-    command(["cargo", "build", "--offline"])
+    command(["cargo", "build", "--offline", "--verbose"])
         .current_dir(scratch_dir)
         .status()?
         .exit_ok_ext()?;
