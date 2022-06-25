@@ -25,14 +25,21 @@ use crate::stats::{ComputedStats, Stats};
 
 fn main() -> Result<()> {
     let mut args: Vec<_> = std::env::args().collect();
-    if args[0] == "quickbuild" {
-        args.remove(0);
+    if args[1] == "quickbuild" {
+        args.remove(1);
     }
-    unpack_or_build_packages()?;
+    // example invocation for testing:
+    //     \in cargo-quickbuild/ cargo run -- $HOME/tmp/`git describe`
+    let tarball_dir = match args.get(1) {
+        Some(path) => PathBuf::from(path),
+        None => home::home_dir().unwrap().join("tmp/quick"),
+    };
+
+    unpack_or_build_packages(&tarball_dir)?;
     Ok(())
 }
 
-fn unpack_or_build_packages() -> Result<()> {
+fn unpack_or_build_packages(tarball_dir: &Path) -> Result<()> {
     let config = Config::default()?;
 
     // FIXME: compile cargo in release mode
@@ -69,7 +76,7 @@ fn unpack_or_build_packages() -> Result<()> {
         }
         for (unit, deps) in current_level {
             computed_deps.insert(unit, deps);
-            build_tarball_if_not_exists(&computed_deps, unit)?;
+            build_tarball_if_not_exists(tarball_dir, &computed_deps, unit)?;
         }
     }
 
@@ -77,29 +84,33 @@ fn unpack_or_build_packages() -> Result<()> {
 }
 
 fn build_tarball_if_not_exists(
+    tarball_dir: &Path,
     computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>,
     unit: &Unit,
 ) -> Result<()> {
     let deps_string = units_to_cargo_toml_deps(computed_deps, unit);
 
-    let tarball_path = get_tarball_path(computed_deps, unit);
+    let tarball_path = get_tarball_path(tarball_dir, computed_deps, unit);
     println!("\n{tarball_path:?} deps:\n{}", deps_string);
     if tarball_path.exists() {
         println!("{tarball_path:?} already exists");
         return Ok(());
     }
-    build_tarball(computed_deps, unit)
+    build_tarball(tarball_dir, computed_deps, unit)
 }
 
 // FIXME: put a cache on this?
-fn get_tarball_path(computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>, unit: &Unit) -> PathBuf {
+fn get_tarball_path(
+    tarball_dir: &Path,
+    computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>,
+    unit: &Unit,
+) -> PathBuf {
     let deps_string = units_to_cargo_toml_deps(computed_deps, unit);
 
     let digest = hex_digest(Algorithm::SHA256, deps_string.as_bytes());
     let package_name = unit.deref().pkg.name();
     let package_version = unit.deref().pkg.version();
 
-    let tarball_dir = home::home_dir().unwrap().join("tmp/quick");
     std::fs::create_dir_all(&tarball_dir).unwrap();
 
     tarball_dir.join(format!("{package_name}-{package_version}-{digest}.tar"))
@@ -148,7 +159,11 @@ fn flatten_deps<'a>(
     )
 }
 
-fn build_tarball(computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>, unit: &Unit) -> Result<()> {
+fn build_tarball(
+    tarball_dir: &Path,
+    computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>,
+    unit: &Unit,
+) -> Result<()> {
     let tempdir = TempDir::new("cargo-quickbuild-scratchpad")?;
     let scratch_dir = tempdir.path().join("cargo-quickbuild-scratchpad");
 
@@ -160,7 +175,7 @@ fn build_tarball(computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>, unit: &Unit) ->
     cargo_init(&scratch_dir)?;
     stats.init_done();
 
-    unpack_tarballs_of_deps(computed_deps, unit, &scratch_dir)?;
+    unpack_tarballs_of_deps(tarball_dir, computed_deps, unit, &scratch_dir)?;
     stats.untar_done();
 
     let deps_string = units_to_cargo_toml_deps(computed_deps, unit);
@@ -179,7 +194,7 @@ fn build_tarball(computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>, unit: &Unit) ->
         &ComputedStats::from(stats),
     )?;
 
-    let tarball_path = get_tarball_path(computed_deps, unit);
+    let tarball_path = get_tarball_path(tarball_dir, computed_deps, unit);
     std::fs::rename(&temp_stats_path, tarball_path.with_extension("stats.json"))?;
     std::fs::rename(&temp_tarball_path, &tarball_path)?;
     println!("wrote to {tarball_path:?}");
@@ -197,13 +212,14 @@ fn cargo_init(scratch_dir: &std::path::PathBuf) -> Result<()> {
 }
 
 fn unpack_tarballs_of_deps(
+    tarball_dir: &Path,
     computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>,
     unit: &Unit,
     scratch_dir: &Path,
 ) -> Result<()> {
     for dep in flatten_deps(computed_deps, unit).unique() {
         // These should be *guaranteed* to already be built.
-        archive::untar_target_dir(computed_deps, &dep, scratch_dir)?;
+        archive::untar_target_dir(tarball_dir, computed_deps, &dep, scratch_dir)?;
     }
 
     Ok(())

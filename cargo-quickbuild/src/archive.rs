@@ -32,11 +32,12 @@ pub fn tar_target_dir(
 }
 
 pub(crate) fn untar_target_dir(
+    tarball_dir: &Path,
     computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>,
     unit: &Unit,
     scratch_dir: &Path,
 ) -> Result<()> {
-    let tarball_path = get_tarball_path(computed_deps, unit);
+    let tarball_path = get_tarball_path(tarball_dir, computed_deps, unit);
     assert!(tarball_path.exists(), "{tarball_path:?} does not exist");
     println!("unpacking {tarball_path:?}");
     // FIXME: return BTreeMap<PathBuf, DateTime> or something, by unpacking what Archive::_unpack() does internally
