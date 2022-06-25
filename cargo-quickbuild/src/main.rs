@@ -55,6 +55,11 @@ fn unpack_or_build_packages(tarball_dir: &Path) -> Result<()> {
         .unit_graph
         .iter()
         .filter(|(unit, _)| unit.target.is_lib())
+        // HACK: only build curl-sys + deps, to repo an issue more quickly
+        .filter(|(unit, _)| {
+            let name = unit.deref().pkg.name();
+            name == "libz-sys" || name == "libnghttp2-sys" || name == "libc" || name == "curl-sys"
+        })
         .collect();
     units.sort_unstable();
 
