@@ -16,6 +16,7 @@ use cargo::core::Workspace;
 use cargo::ops::{create_bcx, CompileOptions};
 use cargo::Config;
 use crypto_hash::{hex_digest, Algorithm};
+use filetime::FileTime;
 use itertools::Itertools;
 use tempdir::TempDir;
 
@@ -175,7 +176,7 @@ fn build_tarball(
     cargo_init(&scratch_dir)?;
     stats.init_done();
 
-    unpack_tarballs_of_deps(tarball_dir, computed_deps, unit, &scratch_dir)?;
+    let file_timestamps = unpack_tarballs_of_deps(tarball_dir, computed_deps, unit, &scratch_dir)?;
     stats.untar_done();
 
     let deps_string = units_to_cargo_toml_deps(computed_deps, unit);
@@ -186,7 +187,7 @@ fn build_tarball(
     let temp_tarball_path = tempdir.path().join("target.tar");
     let temp_stats_path = temp_tarball_path.with_extension("stats.json");
 
-    archive::tar_target_dir(scratch_dir, &temp_tarball_path)?;
+    archive::tar_target_dir(scratch_dir, &temp_tarball_path, &file_timestamps)?;
     stats.tar_done();
 
     serde_json::to_writer_pretty(
@@ -216,13 +217,19 @@ fn unpack_tarballs_of_deps(
     computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>,
     unit: &Unit,
     scratch_dir: &Path,
-) -> Result<()> {
+) -> Result<BTreeMap<PathBuf, FileTime>> {
+    let mut file_timestamps = BTreeMap::default();
     for dep in flatten_deps(computed_deps, unit).unique() {
         // These should be *guaranteed* to already be built.
-        archive::untar_target_dir(tarball_dir, computed_deps, &dep, scratch_dir)?;
+        file_timestamps.append(&mut archive::untar_target_dir(
+            tarball_dir,
+            computed_deps,
+            &dep,
+            scratch_dir,
+        )?);
     }
 
-    Ok(())
+    Ok(file_timestamps)
 }
 
 fn add_deps_to_manifest_and_run_cargo_build(
