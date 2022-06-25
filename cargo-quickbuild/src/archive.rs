@@ -35,6 +35,12 @@ pub fn tar_target_dir(
             Some(timestamp) if &mtime == timestamp => {
                 log::debug!("skipping {dest:?} because it already exists");
             }
+            Some(timestamp) if entry.file_type().is_file() => {
+                let mut contents = String::new();
+                File::open(entry.path())?.read_to_string(&mut contents)?;
+                println!("contents:\n{contents}");
+                panic!("{dest:?}'s mtime has changed from {timestamp:?} to {mtime:?} and it is not a dir")
+            }
             Some(timestamp) => {
                 log::debug!(
                     "adding {dest:?} because its mtime has changed from {timestamp:?} to {mtime:?}"
