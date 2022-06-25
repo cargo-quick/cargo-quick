@@ -13,9 +13,9 @@ use tar::{Archive, Builder, Entry, EntryType};
 use super::get_tarball_path;
 
 pub fn tar_target_dir(
-    scratch_dir: std::path::PathBuf,
+    scratch_dir_path: std::path::PathBuf,
     temp_tarball_path: &std::path::PathBuf,
-    _file_timestamps_to_exclude: &BTreeMap<PathBuf, FileTime>,
+    file_timestamps_to_exclude: &BTreeMap<PathBuf, FileTime>,
 ) -> Result<()> {
     // FIXME: each tarball contains duplicates of all of the dependencies that we just unpacked already
     // Either inline whatever append_dir_all() is doing and add filtering, or delete files before making the tarball
@@ -26,7 +26,26 @@ pub fn tar_target_dir(
             .truncate(true)
             .open(temp_tarball_path)?,
     );
-    tar.append_dir_all("target", scratch_dir.join("target"))?;
+    for entry in walkdir::WalkDir::new(scratch_dir_path.join("target")) {
+        let entry = entry?;
+        let path = entry.path();
+        let dest = path.strip_prefix(&scratch_dir_path).unwrap();
+        let mtime = FileTime::from_last_modification_time(&entry.metadata()?);
+        match file_timestamps_to_exclude.get(dest) {
+            Some(timestamp) if &mtime == timestamp => {
+                log::debug!("skipping {dest:?} because it already exists");
+            }
+            Some(timestamp) => {
+                log::debug!(
+                    "adding {dest:?} because its mtime has changed from {timestamp:?} to {mtime:?}"
+                );
+                tar.append_path_with_name(path, dest)?;
+            }
+            None => {
+                tar.append_path_with_name(path, dest)?;
+            }
+        }
+    }
     tar.finish()?;
 
     Ok(())

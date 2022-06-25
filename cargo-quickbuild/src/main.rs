@@ -25,6 +25,8 @@ use std_ext::ExitStatusExt;
 use crate::stats::{ComputedStats, Stats};
 
 fn main() -> Result<()> {
+    pretty_env_logger::init();
+
     let mut args: Vec<_> = std::env::args().collect();
     if args[1] == "quickbuild" {
         args.remove(1);
