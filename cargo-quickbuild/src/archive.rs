@@ -10,7 +10,9 @@ use cargo::core::compiler::Unit;
 use filetime::FileTime;
 use tar::{Archive, Builder, Entry, EntryType};
 
+use crate::command;
 use crate::pax::{BuilderExt, PaxBuilder};
+use crate::std_ext::ExitStatusExt;
 
 use super::get_tarball_path;
 
@@ -64,6 +66,31 @@ pub fn tar_target_dir(
     if problem {
         panic!("Got a timestamp problem. See above logging for details.")
     }
+    // actually just nuke this for now and use the one produced by bsd tar
+    std::fs::remove_file(temp_tarball_path)?;
+    _tar_target_dir(scratch_dir_path, temp_tarball_path)?;
+
+    Ok(())
+}
+
+fn _tar_target_dir(
+    scratch_dir: std::path::PathBuf,
+    temp_tarball_path: &std::path::PathBuf,
+) -> Result<()> {
+    // FIXME: cargo already bundles tar as a dep, so just use that
+    // FIXME: each tarball contains duplicates of all of the dependencies that we just unpacked already
+    command([
+        "tar",
+        "-f",
+        &temp_tarball_path.to_string_lossy(),
+        "--format=pax",
+        "-c",
+        "target",
+    ])
+    .current_dir(&scratch_dir)
+    .status()?
+    .exit_ok_ext()?;
+
     Ok(())
 }
 
@@ -95,7 +122,26 @@ pub(crate) fn untar_target_dir(
     println!("unpacking {tarball_path:?}");
     // FIXME: return BTreeMap<PathBuf, DateTime> or something, by unpacking what Archive::_unpack() does internally
     let mut archive = Archive::new(File::open(tarball_path)?);
-    tracked_unpack(&mut archive, scratch_dir)
+    let ret = tracked_unpack(&mut archive, scratch_dir)?;
+    _untar_target_dir(tarball_dir, computed_deps, unit, scratch_dir)?;
+    Ok(ret)
+}
+
+fn _untar_target_dir(
+    tarball_dir: &Path,
+    computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>,
+    unit: &Unit,
+    scratch_dir: &Path,
+) -> Result<()> {
+    let tarball_path = get_tarball_path(tarball_dir, computed_deps, unit);
+    assert!(tarball_path.exists(), "{tarball_path:?} does not exist");
+    println!("unpacking {tarball_path:?}");
+    command(["tar", "-xf", &tarball_path.to_string_lossy(), "target"])
+        .current_dir(&scratch_dir)
+        .status()?
+        .exit_ok_ext()?;
+
+    Ok(())
 }
 
 /// Originally  copy-pasta of tar-rs's private _unpack() method, but returns the list of paths that have been unpacked.
@@ -119,9 +165,10 @@ fn tracked_unpack<R: Read>(
         } else {
             let mtime = get_high_res_mtime(&mut file)?;
             insert_timestamp(&mut file_timestamps, &file, mtime)?;
+            // HACK: skip this because we're using BSD tar instead
             // FIXME: upstream this into the tar crate
-            file.unpack_in(dst)?;
-            filetime::set_file_times(dst.join(file.path()?), mtime, mtime)?;
+            // file.unpack_in(dst)?;
+            // filetime::set_file_times(dst.join(file.path()?), mtime, mtime)?;
         }
     }
     for mut dir in directories {
@@ -134,12 +181,13 @@ fn tracked_unpack<R: Read>(
 }
 
 fn get_high_res_mtime<R: Read>(file: &mut Entry<R>) -> Result<FileTime, anyhow::Error> {
+    let path = file.path().unwrap().into_owned();
     let mtime = file
         .pax_extensions()?
         .expect("refusing to unpack tarball with low-resolution mtimes")
         .into_iter()
         .find(|e| e.as_ref().unwrap().key() == Ok("mtime"))
-        .unwrap()
+        .with_context(|| format!("no mtime for {:?}", path))?
         .unwrap()
         .value()?;
     let (seconds, nanos) = mtime.split_once('.').unwrap();

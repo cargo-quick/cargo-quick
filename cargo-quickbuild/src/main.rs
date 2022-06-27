@@ -21,9 +21,8 @@ use crypto_hash::{hex_digest, Algorithm};
 use filetime::FileTime;
 use itertools::Itertools;
 
-use std_ext::ExitStatusExt;
-
 use crate::stats::{ComputedStats, Stats};
+use crate::std_ext::ExitStatusExt;
 
 fn main() -> Result<()> {
     pretty_env_logger::init();
