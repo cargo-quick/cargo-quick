@@ -28,6 +28,7 @@ pub fn tar_target_dir(
             .truncate(true)
             .open(temp_tarball_path)?,
     );
+    let mut problem = false;
     for entry in walkdir::WalkDir::new(scratch_dir_path.join("target")) {
         let entry = entry?;
         let path = entry.path();
@@ -39,9 +40,14 @@ pub fn tar_target_dir(
             }
             Some(timestamp) if entry.file_type().is_file() => {
                 let mut contents = String::new();
-                File::open(entry.path())?.read_to_string(&mut contents)?;
-                println!("contents:\n{contents}");
-                panic!("{dest:?}'s mtime has changed from {timestamp:?} to {mtime:?} and it is not a dir")
+                match File::open(entry.path())?.read_to_string(&mut contents) {
+                    Ok(_) => {
+                        println!("{dest:?}'s mtime has changed from {timestamp:?} to {mtime:?} and it is not a dir. contents:\n{contents:?}");
+                    },
+                    Err(_) => println!("{dest:?}'s mtime has changed from {timestamp:?} to {mtime:?} and it is not a dir. (binary file)"),
+                }
+                problem = true;
+                append_path_with_mtime(&mut tar, path, dest, mtime)?;
             }
             Some(timestamp) => {
                 log::debug!(
@@ -55,7 +61,9 @@ pub fn tar_target_dir(
         }
     }
     tar.finish()?;
-
+    if problem {
+        panic!("Got a timestamp problem. See above logging for details.")
+    }
     Ok(())
 }
 

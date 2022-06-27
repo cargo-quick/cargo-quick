@@ -176,6 +176,7 @@ struct FixedTempDir {
 impl FixedTempDir {
     fn new(name: &str) -> Result<Self> {
         let path = std::env::temp_dir().join(name);
+        let _ = remove_dir_all(&path);
         std::fs::create_dir(&path).with_context(|| format!("making tempdir in {path:?}"))?;
         Ok(FixedTempDir { path })
     }
@@ -183,7 +184,7 @@ impl FixedTempDir {
 
 impl Drop for FixedTempDir {
     fn drop(&mut self) {
-        let _ = remove_dir_all(&self.path);
+        // let _ = remove_dir_all(&self.path);
     }
 }
 
