@@ -99,7 +99,7 @@ fn build_tarball_if_not_exists(
     let deps_string = units_to_cargo_toml_deps(computed_deps, unit);
 
     let tarball_path = get_tarball_path(tarball_dir, computed_deps, unit);
-    println!("\n{tarball_path:?} deps:\n{}", deps_string);
+    println!("STARTING BUILD\n{tarball_path:?} deps:\n{}", deps_string);
     if tarball_path.exists() {
         println!("{tarball_path:?} already exists");
         return Ok(());
@@ -126,9 +126,17 @@ fn get_tarball_path(
 
 fn units_to_cargo_toml_deps(computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>, unit: &Unit) -> String {
     let mut deps_string = String::new();
+    writeln!(
+        deps_string,
+        "# {} {}",
+        unit.deref().pkg.name(),
+        unit.deref().pkg.version().to_string()
+    )
+    .unwrap();
     std::iter::once(unit).chain(
         flatten_deps(computed_deps, unit)
     )
+    .sorted()
     .unique()
     .for_each(|unit| {
         let package = &unit.deref().pkg;
@@ -246,7 +254,7 @@ fn unpack_tarballs_of_deps(
     scratch_dir: &Path,
 ) -> Result<BTreeMap<PathBuf, FileTime>> {
     let mut file_timestamps = BTreeMap::default();
-    for dep in flatten_deps(computed_deps, unit).unique() {
+    for dep in flatten_deps(computed_deps, unit).sorted().unique() {
         // These should be *guaranteed* to already be built.
         file_timestamps.append(&mut archive::untar_target_dir(
             tarball_dir,
@@ -272,7 +280,7 @@ fn add_deps_to_manifest_and_run_cargo_build(
     cargo_toml.flush()?;
     drop(cargo_toml);
 
-    command(["cargo", "build", "--offline", "--verbose"])
+    command(["cargo", "build", "--jobs=1", "--offline", "--verbose"])
         .current_dir(scratch_dir)
         .status()?
         .exit_ok_ext()?;
