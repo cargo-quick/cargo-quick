@@ -4,7 +4,7 @@ use std::io::Read;
 use std::path::Path;
 use std::{collections::BTreeMap, path::PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Ok, Result};
 use cargo::core::compiler::unit_graph::UnitDep;
 use cargo::core::compiler::Unit;
 use filetime::FileTime;
@@ -43,7 +43,7 @@ pub fn tar_target_dir(
             Some(timestamp) if entry.file_type().is_file() => {
                 let mut contents = String::new();
                 match File::open(entry.path())?.read_to_string(&mut contents) {
-                    Ok(_) => {
+                    core::result::Result::Ok(_) => {
                         println!("{dest:?}'s mtime has changed from {timestamp:?} to {mtime:?} and it is not a dir. contents:\n{contents:?}");
                     },
                     Err(_) => println!("{dest:?}'s mtime has changed from {timestamp:?} to {mtime:?} and it is not a dir. (binary file)"),
@@ -122,8 +122,8 @@ pub(crate) fn untar_target_dir(
     println!("unpacking {tarball_path:?}");
     // FIXME: return BTreeMap<PathBuf, DateTime> or something, by unpacking what Archive::_unpack() does internally
     let mut archive = Archive::new(File::open(tarball_path)?);
-    let ret = tracked_unpack(&mut archive, scratch_dir)?;
     _untar_target_dir(tarball_dir, computed_deps, unit, scratch_dir)?;
+    let ret = tracked_unpack(&mut archive, scratch_dir)?;
     Ok(ret)
 }
 
@@ -182,14 +182,21 @@ fn tracked_unpack<R: Read>(
 
 fn get_high_res_mtime<R: Read>(file: &mut Entry<R>) -> Result<FileTime, anyhow::Error> {
     let path = file.path().unwrap().into_owned();
+    let low_res_mtime = file.header().mtime().unwrap();
     let mtime = file
         .pax_extensions()?
         .expect("refusing to unpack tarball with low-resolution mtimes")
         .into_iter()
-        .find(|e| e.as_ref().unwrap().key() == Ok("mtime"))
-        .with_context(|| format!("no mtime for {:?}", path))?
-        .unwrap()
-        .value()?;
+        .find(|e| e.as_ref().unwrap().key().as_ref().unwrap() == &"mtime")
+        .map(|x| x.unwrap().value().unwrap())
+        .or_else(|| {
+            if low_res_mtime == 123456789 {
+                Some("123456789.0")
+            } else {
+                None
+            }
+        })
+        .with_context(|| format!("no high res mtime for {path:?} - low res = {low_res_mtime}",))?;
     let (seconds, nanos) = mtime.split_once('.').unwrap();
     let seconds = seconds.parse()?;
     // right pad with 0s - https://docs.rs/pad/0.1.6/pad/#padding-in-the-stdlib
@@ -205,6 +212,8 @@ fn insert_timestamp<R: Read>(
     mtime: FileTime,
 ) -> Result<(), anyhow::Error> {
     let path = file.path()?.clone().into_owned();
+    println!("have high-res timesamp for {path:?}: {mtime}");
+
     match file_timestamps.entry(path) {
         btree_map::Entry::Vacant(entry) => {
             entry.insert(mtime);
