@@ -61,7 +61,7 @@ fn unpack_or_build_packages(tarball_dir: &Path) -> Result<()> {
         // HACK: only build curl-sys + deps, to repo an issue more quickly
         .filter(|(unit, _)| {
             bcx.unit_graph
-                .find_by_name("curl-sys")
+                .filter_by_name("curl-sys")
                 .any(|curl| bcx.unit_graph.has_dependency(curl, unit))
         })
         .collect();

@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use cargo::core::{compiler::CompileKind, TargetKind};
+    use cargo::core::TargetKind;
 
     use super::super::*;
     #[test]
@@ -13,7 +13,7 @@ mod tests {
 
         let [compile_build_script_unit]: [_; 1] = bcx
             .unit_graph
-            .find_by_name("libnghttp2-sys")
+            .filter_by_name("libnghttp2-sys")
             // FIXME: turn this into an extension method on Unit or something.
             .filter(|unit| {
                 unit.target.name() == "build-script-build"
@@ -31,7 +31,7 @@ mod tests {
 
         let [run_build_script_unit]: [_; 1] = bcx
             .unit_graph
-            .find_by_name("libnghttp2-sys")
+            .filter_by_name("libnghttp2-sys")
             // FIXME: turn this into an extension method on Unit or something.
             .filter(|unit| {
                 unit.target.name() == "build-script-build"
@@ -49,7 +49,7 @@ mod tests {
 
         let [compile_lib_script_unit]: [_; 1] = bcx
             .unit_graph
-            .find_by_name("libnghttp2-sys")
+            .filter_by_name("libnghttp2-sys")
             // FIXME: turn this into an extension method on Unit or something.
             .filter(|unit| {
                 unit.target.name() == "libnghttp2-sys"
