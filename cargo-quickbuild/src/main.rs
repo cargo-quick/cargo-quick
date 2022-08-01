@@ -3,6 +3,7 @@ mod deps;
 mod pax;
 mod stats;
 mod std_ext;
+mod unit_types;
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
