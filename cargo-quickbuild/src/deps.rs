@@ -4,7 +4,7 @@ use std::{
 };
 
 use cargo::{
-    core::compiler::{unit_graph::UnitDep, Unit},
+    core::compiler::{unit_graph::UnitDep, CompileMode, Unit},
     util::interning::InternedString,
 };
 
@@ -36,23 +36,45 @@ impl UnitGraphExt for HashMap<Unit, Vec<UnitDep>> {
 
 /// Helpers for debugging vecs of Unit
 pub trait UnitNames {
-    fn unit_names(&self) -> Vec<InternedString>;
-    fn unit_names_and_deps(&self) -> Vec<(InternedString, Vec<InternedString>)>;
+    fn unit_names(&self) -> Vec<(InternedString, CompileMode)>;
+    fn unit_names_and_deps(
+        &self,
+    ) -> Vec<(
+        InternedString,
+        CompileMode,
+        Vec<(InternedString, CompileMode)>,
+    )>;
 }
 
 impl UnitNames for Vec<(&Unit, &Vec<UnitDep>)> {
-    fn unit_names(&self) -> Vec<InternedString> {
+    fn unit_names(&self) -> Vec<(InternedString, CompileMode)> {
         self.iter()
-            .map(|(unit, _)| (*unit).deref().pkg.name())
+            .map(|(unit, _)| {
+                let unit = (*unit).deref();
+                (unit.pkg.name(), unit.mode)
+            })
             .collect()
     }
 
-    fn unit_names_and_deps(&self) -> Vec<(InternedString, Vec<InternedString>)> {
+    fn unit_names_and_deps(
+        &self,
+    ) -> Vec<(
+        InternedString,
+        CompileMode,
+        Vec<(InternedString, CompileMode)>,
+    )> {
         self.iter()
             .map(|(unit, deps)| {
+                let unit = (*unit).deref();
                 (
-                    (*unit).deref().pkg.name(),
-                    deps.iter().map(|dep| dep.unit.deref().pkg.name()).collect(),
+                    unit.pkg.name(),
+                    unit.mode,
+                    deps.iter()
+                        .map(|dep| {
+                            let unit = &dep.unit.deref();
+                            (unit.pkg.name(), unit.mode)
+                        })
+                        .collect(),
                 )
             })
             .collect()
