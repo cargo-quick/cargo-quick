@@ -23,6 +23,7 @@ use deps::UnitGraphExt;
 use filetime::FileTime;
 use itertools::Itertools;
 
+use crate::deps::UnitNames;
 use crate::stats::{ComputedStats, Stats};
 use crate::std_ext::ExitStatusExt;
 
@@ -64,20 +65,20 @@ fn unpack_or_build_packages(tarball_dir: &Path) -> Result<()> {
         })
         .collect();
     units.sort_unstable();
-    dbg!(&units
-        .iter()
-        .map(|(unit, _)| (*unit).deref().pkg.name())
-        .collect::<Vec<_>>());
+
+    dbg!(units.unit_names());
 
     let mut computed_deps = BTreeMap::<&Unit, &Vec<UnitDep>>::default();
 
-    for level in 0..=10 {
+    for level in 0..=7 {
         println!("START OF LEVEL {level}");
         let current_level;
         // libs with no lib unbuilt deps and no build.rs
         (current_level, units) = units.iter().partition(|(_unit, deps)| {
             deps.iter().all(|dep| computed_deps.contains_key(&dep.unit))
         });
+
+        dbg!(current_level.unit_names_and_deps());
 
         if current_level.is_empty() && !units.is_empty() {
             println!(
@@ -169,7 +170,7 @@ fn flatten_deps<'a>(
         (&*computed_deps.get(unit).unwrap())
             .iter()
             .map(|dep| &dep.unit)
-            .filter(|dep| dep.target.is_lib())
+            .filter(|dep| dep.target.is_lib() || (dep.pkg.name() == "cc" && panic!("{dep:?}")))
             .flat_map(move |dep| {
                 assert!(dep.target.is_lib());
                 assert_ne!(dep, unit);
@@ -286,6 +287,11 @@ fn add_deps_to_manifest_and_run_cargo_build(
     write!(cargo_toml, "{}", deps_string)?;
     cargo_toml.flush()?;
     drop(cargo_toml);
+
+    command(["cargo", "tree", "-vv"])
+        .current_dir(scratch_dir)
+        .status()?
+        .exit_ok_ext()?;
 
     command(["cargo", "build", "--jobs=1", "--offline"])
         .current_dir(scratch_dir)
