@@ -1,6 +1,7 @@
 mod archive;
 mod deps;
 mod pax;
+mod resolve;
 mod stats;
 mod std_ext;
 mod unit_types;
