@@ -2,6 +2,7 @@ mod archive;
 mod deps;
 mod pax;
 mod resolve;
+mod resolve_ext;
 mod stats;
 mod std_ext;
 mod unit_types;
@@ -15,7 +16,7 @@ use std::{ffi::OsStr, process::Command};
 
 use anyhow::{Context, Result};
 use cargo::core::compiler::{CompileMode, UnitInterner};
-use cargo::core::{Dependency, PackageId, Resolve, Workspace};
+use cargo::core::{PackageId, Resolve, Workspace};
 use cargo::ops::CompileOptions;
 use cargo::Config;
 use crypto_hash::{hex_digest, Algorithm};
@@ -23,6 +24,7 @@ use filetime::FileTime;
 use itertools::Itertools;
 
 use crate::resolve::create_resolve;
+use crate::resolve_ext::ResolveExt;
 use crate::stats::{ComputedStats, Stats};
 use crate::std_ext::ExitStatusExt;
 
@@ -44,6 +46,18 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+fn outstanding_deps(
+    resolve: &Resolve,
+    built_packages: &HashSet<PackageId>,
+    package_id: PackageId,
+) -> Vec<PackageId> {
+    resolve
+        .recursive_deps_including_self(package_id)
+        .into_iter()
+        .filter(|dep| dep != &package_id && !built_packages.contains(&dep))
+        .collect()
+}
+
 fn unpack_or_build_packages(tarball_dir: &Path) -> Result<()> {
     let config = Config::default()?;
 
@@ -53,52 +67,46 @@ fn unpack_or_build_packages(tarball_dir: &Path) -> Result<()> {
     let interner = UnitInterner::new();
     let resolve = create_resolve(&ws, &options, &interner)?.targeted_resolve;
 
-    // let mut crates: Vec<(PackageId, &HashSet<Dependency>)> =
-    //     resolve.deps(resolve.sort()[0]).collect();
-
-    let [curl_sys]: [_; 1] = resolve
+    // let root_package = resolve.sort()[0];
+    let [root_package]: [_; 1] = resolve
         .iter()
         .filter(|id| id.name() == "curl-sys")
         .collect::<Vec<_>>()
         .try_into()
         .unwrap();
-    let mut packages: Vec<(PackageId, &HashSet<Dependency>)> = resolve.deps(curl_sys).collect();
+    let mut packages_to_build = resolve.recursive_deps_including_self(root_package);
 
-    // let mut units: Vec<(&Unit, &Vec<UnitDep>)> = bcx
-    //     .unit_graph
-    //     .iter()
-    //     // HACK: only build curl-sys + deps, to repo an issue more quickly
-    //     .filter(|(unit, _)| {
-    //         bcx.unit_graph
-    //             .filter_by_name("curl-sys")
-    //             .any(|curl| bcx.unit_graph.has_dependency(curl, unit))
-    //     })
-    //     .collect();
-    // units.sort_unstable();
+    dbg!(&root_package);
+    dbg!(&packages_to_build);
+    assert!(packages_to_build.contains(&root_package));
 
-    // dbg!(units.unit_names());
-
-    let mut computed_deps = BTreeMap::<PackageId, &HashSet<Dependency>>::default();
+    let mut built_packages: HashSet<PackageId> = Default::default();
 
     for level in 0..=7 {
         println!("START OF LEVEL {level}");
         let current_level;
-        (current_level, packages) = packages.iter().partition(|(_unit, deps)| {
-            deps.iter()
-                .all(|dep| computed_deps.keys().any(|id| dep.matches_id(*id)))
+        (current_level, packages_to_build) = packages_to_build.iter().partition(|package_id| {
+            outstanding_deps(&resolve, &built_packages, **package_id).is_empty()
         });
 
-        // dbg!(current_level.unit_names_and_deps());
+        dbg!(&current_level);
 
-        if current_level.is_empty() && !packages.is_empty() {
+        if current_level.is_empty() && !packages_to_build.is_empty() {
             println!(
-                "We haven't compiled everything yet, but there is nothing left to do\n\n {packages:#?}"
+                "We haven't compiled everything yet, but there is nothing left to do\n\npackages_to_build: {packages_to_build:#?}"
             );
-            anyhow::bail!("current_level.is_empty() && !packages.is_empty()");
+            dbg!(&built_packages);
+            for package_id in packages_to_build {
+                dbg!((
+                    package_id,
+                    outstanding_deps(&resolve, &built_packages, package_id)
+                ));
+            }
+            anyhow::bail!("current_level.is_empty() && !packages_to_build.is_empty()");
         }
-        for (unit, deps) in current_level {
-            computed_deps.insert(unit, deps);
-            build_tarball_if_not_exists(&resolve, tarball_dir, unit)?;
+        for package_id in current_level {
+            build_tarball_if_not_exists(&resolve, tarball_dir, package_id)?;
+            built_packages.insert(package_id);
         }
     }
 
@@ -148,11 +156,7 @@ fn packages_to_cargo_toml_deps(resolve: &Resolve, package_id: PackageId) -> Stri
     )
     .unwrap();
 
-    std::iter::once(package_id).chain(
-        resolve.deps(package_id).map(|(id, _)| id)
-    )
-    .sorted()
-    .unique()
+    resolve.recursive_deps_including_self(package_id).into_iter()
     .for_each(|package_id| {
         let name = package_id.name();
         let version = package_id.version().to_string();
