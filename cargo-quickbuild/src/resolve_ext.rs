@@ -20,6 +20,27 @@ impl ResolveExt for Resolve {
                 .iter()
                 .map(|id| self.deps(*id))
                 .flatten()
+                .inspect(move |(dep_id, dep_set)| {
+                    if root_package.name() == "jobserver" && dep_id.name() == "libc" {
+                        dbg!(dep_id);
+                        dbg!(dep_set);
+                    }
+                })
+                .filter(|(_, dep_set)| {
+                    dep_set.iter().all(|dep| {
+                        dep.platform()
+                            // FIXME: find a way to get platform and cfg settings properly
+                            // `libc` is being excluded because we are not passing in `cfg(unix)` here.
+                            .map(|platform| platform.matches("aarch64-apple-darwin", &[]))
+                            .unwrap_or(true)
+                    })
+                })
+                .inspect(move |(dep_id, dep_set)| {
+                    if root_package.name() == "jobserver" {
+                        dbg!(dep_id);
+                    }
+                    assert!(dep_id.name() != "winapi", "{:#?}", (dep_id, dep_set))
+                })
                 .map(|(id, _)| id)
                 .filter(|id| !deps.contains(id))
                 .collect_vec();
