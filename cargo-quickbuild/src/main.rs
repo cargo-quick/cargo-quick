@@ -1,7 +1,9 @@
 mod archive;
+mod deps;
 mod pax;
 mod stats;
 mod std_ext;
+mod unit_types;
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -18,9 +20,11 @@ use cargo::core::Workspace;
 use cargo::ops::{create_bcx, CompileOptions};
 use cargo::Config;
 use crypto_hash::{hex_digest, Algorithm};
+use deps::UnitGraphExt;
 use filetime::FileTime;
 use itertools::Itertools;
 
+use crate::deps::UnitNames;
 use crate::stats::{ComputedStats, Stats};
 use crate::std_ext::ExitStatusExt;
 
@@ -54,27 +58,28 @@ fn unpack_or_build_packages(tarball_dir: &Path) -> Result<()> {
     let mut units: Vec<(&Unit, &Vec<UnitDep>)> = bcx
         .unit_graph
         .iter()
-        .filter(|(unit, _)| unit.target.is_lib())
         // HACK: only build curl-sys + deps, to repo an issue more quickly
         .filter(|(unit, _)| {
-            let name = unit.deref().pkg.name();
-            name == "libz-sys" || name == "libnghttp2-sys" || name == "libc" || name == "curl-sys"
+            bcx.unit_graph
+                .filter_by_name("curl-sys")
+                .any(|curl| bcx.unit_graph.has_dependency(curl, unit))
         })
         .collect();
     units.sort_unstable();
 
+    dbg!(units.unit_names());
+
     let mut computed_deps = BTreeMap::<&Unit, &Vec<UnitDep>>::default();
 
-    for level in 0..=10 {
+    for level in 0..=7 {
         println!("START OF LEVEL {level}");
         let current_level;
         // libs with no lib unbuilt deps and no build.rs
-        (current_level, units) = units.iter().partition(|(unit, deps)| {
-            unit.target.is_lib()
-                && deps
-                    .iter()
-                    .all(|dep| (!dep.unit.target.is_lib()) || computed_deps.contains_key(&dep.unit))
+        (current_level, units) = units.iter().partition(|(_unit, deps)| {
+            deps.iter().all(|dep| computed_deps.contains_key(&dep.unit))
         });
+
+        dbg!(current_level.unit_names_and_deps());
 
         if current_level.is_empty() && !units.is_empty() {
             println!(
@@ -96,6 +101,10 @@ fn build_tarball_if_not_exists(
     computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>,
     unit: &Unit,
 ) -> Result<()> {
+    if !unit.target.is_lib() {
+        log::info!("skipping {unit:?} for now, because it is not a lib");
+        return Ok(());
+    }
     let deps_string = units_to_cargo_toml_deps(computed_deps, unit);
 
     let tarball_path = get_tarball_path(tarball_dir, computed_deps, unit);
@@ -162,7 +171,7 @@ fn flatten_deps<'a>(
         (&*computed_deps.get(unit).unwrap())
             .iter()
             .map(|dep| &dep.unit)
-            .filter(|dep| dep.target.is_lib())
+            .filter(|dep| dep.target.is_lib() || (dep.pkg.name() == "cc" && panic!("{dep:?}")))
             .flat_map(move |dep| {
                 assert!(dep.target.is_lib());
                 assert_ne!(dep, unit);
@@ -280,7 +289,12 @@ fn add_deps_to_manifest_and_run_cargo_build(
     cargo_toml.flush()?;
     drop(cargo_toml);
 
-    command(["cargo", "build", "--jobs=1", "--offline", "--verbose"])
+    command(["cargo", "tree", "-vv"])
+        .current_dir(scratch_dir)
+        .status()?
+        .exit_ok_ext()?;
+
+    command(["cargo", "build", "--jobs=1", "--offline"])
         .current_dir(scratch_dir)
         .status()?
         .exit_ok_ext()?;

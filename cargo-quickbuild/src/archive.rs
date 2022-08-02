@@ -212,7 +212,7 @@ fn insert_timestamp<R: Read>(
     mtime: FileTime,
 ) -> Result<(), anyhow::Error> {
     let path = file.path()?.clone().into_owned();
-    println!("have high-res timesamp for {path:?}: {mtime}");
+    log::debug!("have high-res timesamp for {path:?}: {mtime}");
 
     match file_timestamps.entry(path) {
         btree_map::Entry::Vacant(entry) => {
