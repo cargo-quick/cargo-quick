@@ -118,29 +118,10 @@ pub(crate) fn untar_target_dir(
 ) -> Result<BTreeMap<PathBuf, FileTime>> {
     let tarball_path = get_tarball_path(resolve, tarball_dir, package_id);
     assert!(tarball_path.exists(), "{tarball_path:?} does not exist");
-    println!("unpacking {tarball_path:?}");
     // FIXME: return BTreeMap<PathBuf, DateTime> or something, by unpacking what Archive::_unpack() does internally
     let mut archive = Archive::new(File::open(tarball_path)?);
-    _untar_target_dir(resolve, tarball_dir, package_id, scratch_dir)?;
     let ret = tracked_unpack(&mut archive, scratch_dir)?;
     Ok(ret)
-}
-
-fn _untar_target_dir(
-    resolve: &Resolve,
-    tarball_dir: &Path,
-    package_id: PackageId,
-    scratch_dir: &Path,
-) -> Result<()> {
-    let tarball_path = get_tarball_path(resolve, tarball_dir, package_id);
-    assert!(tarball_path.exists(), "{tarball_path:?} does not exist");
-    println!("unpacking {tarball_path:?}");
-    command(["tar", "-xf", &tarball_path.to_string_lossy(), "target"])
-        .current_dir(&scratch_dir)
-        .status()?
-        .exit_ok_ext()?;
-
-    Ok(())
 }
 
 /// Originally  copy-pasta of tar-rs's private _unpack() method, but returns the list of paths that have been unpacked.
@@ -164,10 +145,14 @@ fn tracked_unpack<R: Read>(
         } else {
             let mtime = get_high_res_mtime(&mut file)?;
             insert_timestamp(&mut file_timestamps, &file, mtime)?;
-            // HACK: skip this because we're using BSD tar instead
-            // FIXME: upstream this into the tar crate
-            // file.unpack_in(dst)?;
-            // filetime::set_file_times(dst.join(file.path()?), mtime, mtime)?;
+            if file.path().unwrap().exists() {
+                assert_eq!(
+                    mtime,
+                    FileTime::from_last_modification_time(&std::fs::metadata(&file.path()?)?)
+                );
+            }
+            file.unpack_in(dst)?;
+            filetime::set_file_times(dst.join(file.path()?), mtime, mtime)?;
         }
     }
     for mut dir in directories {
