@@ -5,7 +5,6 @@ mod resolve;
 mod resolve_ext;
 mod stats;
 mod std_ext;
-mod unit_types;
 
 use std::collections::{BTreeMap, HashSet};
 use std::fmt::Write as _;
@@ -163,7 +162,7 @@ fn packages_to_cargo_toml_deps<'cfg>(
     )
     .unwrap();
 
-    resolve.recursive_deps_including_self(package_id).into_iter()
+    dbg!(resolve.recursive_deps_including_self(package_id)).into_iter()
     .for_each(|package_id| {
         let name = package_id.name();
         let version = package_id.version().to_string();
