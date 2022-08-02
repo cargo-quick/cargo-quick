@@ -5,8 +5,7 @@ use std::path::Path;
 use std::{collections::BTreeMap, path::PathBuf};
 
 use anyhow::{Context, Ok, Result};
-use cargo::core::compiler::unit_graph::UnitDep;
-use cargo::core::compiler::Unit;
+use cargo::core::{PackageId, Resolve};
 use filetime::FileTime;
 use tar::{Archive, Builder, Entry, EntryType};
 
@@ -112,28 +111,28 @@ fn append_path_with_mtime(
 }
 
 pub(crate) fn untar_target_dir(
+    resolve: &Resolve,
     tarball_dir: &Path,
-    computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>,
-    unit: &Unit,
+    package_id: PackageId,
     scratch_dir: &Path,
 ) -> Result<BTreeMap<PathBuf, FileTime>> {
-    let tarball_path = get_tarball_path(tarball_dir, computed_deps, unit);
+    let tarball_path = get_tarball_path(resolve, tarball_dir, package_id);
     assert!(tarball_path.exists(), "{tarball_path:?} does not exist");
     println!("unpacking {tarball_path:?}");
     // FIXME: return BTreeMap<PathBuf, DateTime> or something, by unpacking what Archive::_unpack() does internally
     let mut archive = Archive::new(File::open(tarball_path)?);
-    _untar_target_dir(tarball_dir, computed_deps, unit, scratch_dir)?;
+    _untar_target_dir(resolve, tarball_dir, package_id, scratch_dir)?;
     let ret = tracked_unpack(&mut archive, scratch_dir)?;
     Ok(ret)
 }
 
 fn _untar_target_dir(
+    resolve: &Resolve,
     tarball_dir: &Path,
-    computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>,
-    unit: &Unit,
+    package_id: PackageId,
     scratch_dir: &Path,
 ) -> Result<()> {
-    let tarball_path = get_tarball_path(tarball_dir, computed_deps, unit);
+    let tarball_path = get_tarball_path(resolve, tarball_dir, package_id);
     assert!(tarball_path.exists(), "{tarball_path:?} does not exist");
     println!("unpacking {tarball_path:?}");
     command(["tar", "-xf", &tarball_path.to_string_lossy(), "target"])
