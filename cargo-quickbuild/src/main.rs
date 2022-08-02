@@ -270,7 +270,7 @@ fn add_deps_to_manifest_and_run_cargo_build(
     cargo_toml.flush()?;
     drop(cargo_toml);
 
-    command(["cargo", "tree", "-vv"])
+    command(["cargo", "tree", "-vv", "--no-dedupe", "--edges=all"])
         .current_dir(scratch_dir)
         .status()?
         .exit_ok_ext()?;
