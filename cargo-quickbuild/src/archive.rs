@@ -5,7 +5,8 @@ use std::path::Path;
 use std::{collections::BTreeMap, path::PathBuf};
 
 use anyhow::{Context, Ok, Result};
-use cargo::core::{PackageId, Resolve};
+use cargo::core::PackageId;
+use cargo::ops::WorkspaceResolve;
 use filetime::FileTime;
 use tar::{Archive, Builder, Entry, EntryType};
 
@@ -110,8 +111,8 @@ fn append_path_with_mtime(
     Ok(())
 }
 
-pub(crate) fn untar_target_dir(
-    resolve: &Resolve,
+pub(crate) fn untar_target_dir<'cfg>(
+    resolve: &WorkspaceResolve<'cfg>,
     tarball_dir: &Path,
     package_id: PackageId,
     scratch_dir: &Path,

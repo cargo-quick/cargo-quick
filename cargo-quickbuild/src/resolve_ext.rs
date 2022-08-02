@@ -1,13 +1,14 @@
 use std::collections::BTreeSet;
 
+use cargo::core::resolver::features::FeaturesFor;
 use cargo::core::PackageId;
-use cargo::core::Resolve;
+use cargo::ops::WorkspaceResolve;
 use itertools::Itertools;
 
 pub trait ResolveExt {
     fn recursive_deps_including_self(&self, root_package: PackageId) -> BTreeSet<PackageId>;
 }
-impl ResolveExt for Resolve {
+impl<'cfg> ResolveExt for WorkspaceResolve<'cfg> {
     fn recursive_deps_including_self(&self, root_package: PackageId) -> BTreeSet<PackageId> {
         // FIXME: where the hell is `autocfg` coming from?
         let mut deps: BTreeSet<PackageId> = Default::default();
@@ -18,28 +19,21 @@ impl ResolveExt for Resolve {
         loop {
             let layer = deps
                 .iter()
-                .map(|id| self.deps(*id))
+                .map(|id| self.targeted_resolve.deps(*id))
                 .flatten()
-                .inspect(move |(dep_id, dep_set)| {
-                    if root_package.name() == "jobserver" && dep_id.name() == "libc" {
-                        dbg!(dep_id);
-                        dbg!(dep_set);
-                    }
-                })
-                .filter(|(_, dep_set)| {
-                    dep_set.iter().all(|dep| {
-                        dep.platform()
-                            // FIXME: find a way to get platform and cfg settings properly
-                            // `libc` is being excluded because we are not passing in `cfg(unix)` here.
-                            .map(|platform| platform.matches("aarch64-apple-darwin", &[]))
-                            .unwrap_or(true)
-                    })
-                })
-                .inspect(move |(dep_id, dep_set)| {
-                    if root_package.name() == "jobserver" {
-                        dbg!(dep_id);
-                    }
-                    assert!(dep_id.name() != "winapi", "{:#?}", (dep_id, dep_set))
+                .filter(|(dep_id, _)| {
+                    // FIXME: this feels lossy.
+                    // * HostDep is documented as being for proc macros only. By doing this, I think I am emulating the v1 resolver behaviour.
+                    // * I am only passing in package name, but there may be multiple versions of the package in my tree.
+                    self.resolved_features.is_dep_activated(
+                        root_package,
+                        FeaturesFor::NormalOrDev,
+                        dep_id.name(),
+                    ) || self.resolved_features.is_dep_activated(
+                        root_package,
+                        FeaturesFor::HostDep,
+                        dep_id.name(),
+                    )
                 })
                 .map(|(id, _)| id)
                 .filter(|id| !deps.contains(id))

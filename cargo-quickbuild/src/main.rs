@@ -16,12 +16,11 @@ use std::{ffi::OsStr, process::Command};
 
 use anyhow::{Context, Result};
 use cargo::core::compiler::{CompileMode, UnitInterner};
-use cargo::core::{PackageId, Resolve, Workspace};
-use cargo::ops::CompileOptions;
+use cargo::core::{PackageId, Workspace};
+use cargo::ops::{CompileOptions, WorkspaceResolve};
 use cargo::Config;
 use crypto_hash::{hex_digest, Algorithm};
 use filetime::FileTime;
-use itertools::Itertools;
 
 use crate::resolve::create_resolve;
 use crate::resolve_ext::ResolveExt;
@@ -46,8 +45,8 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn outstanding_deps(
-    resolve: &Resolve,
+fn outstanding_deps<'cfg>(
+    resolve: &WorkspaceResolve<'cfg>,
     built_packages: &HashSet<PackageId>,
     package_id: PackageId,
 ) -> Vec<PackageId> {
@@ -65,10 +64,11 @@ fn unpack_or_build_packages(tarball_dir: &Path) -> Result<()> {
     let ws = Workspace::new(&Path::new("Cargo.toml").canonicalize()?, &config)?;
     let options = CompileOptions::new(&config, CompileMode::Build)?;
     let interner = UnitInterner::new();
-    let resolve = create_resolve(&ws, &options, &interner)?.targeted_resolve;
+    let resolve = create_resolve(&ws, &options, &interner)?;
 
     // let root_package = resolve.sort()[0];
     let [root_package]: [_; 1] = resolve
+        .targeted_resolve
         .iter()
         .filter(|id| id.name() == "curl-sys")
         .collect::<Vec<_>>()
@@ -113,8 +113,8 @@ fn unpack_or_build_packages(tarball_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-fn build_tarball_if_not_exists(
-    resolve: &Resolve,
+fn build_tarball_if_not_exists<'cfg>(
+    resolve: &WorkspaceResolve<'cfg>,
     tarball_dir: &Path,
     package_id: PackageId,
 ) -> Result<()> {
@@ -134,7 +134,11 @@ fn build_tarball_if_not_exists(
 }
 
 // FIXME: put a cache on this?
-fn get_tarball_path(resolve: &Resolve, tarball_dir: &Path, package_id: PackageId) -> PathBuf {
+fn get_tarball_path<'cfg>(
+    resolve: &WorkspaceResolve<'cfg>,
+    tarball_dir: &Path,
+    package_id: PackageId,
+) -> PathBuf {
     let deps_string = packages_to_cargo_toml_deps(resolve, package_id);
 
     let digest = hex_digest(Algorithm::SHA256, deps_string.as_bytes());
@@ -146,7 +150,10 @@ fn get_tarball_path(resolve: &Resolve, tarball_dir: &Path, package_id: PackageId
     tarball_dir.join(format!("{package_name}-{package_version}-{digest}.tar"))
 }
 
-fn packages_to_cargo_toml_deps(resolve: &Resolve, package_id: PackageId) -> String {
+fn packages_to_cargo_toml_deps<'cfg>(
+    resolve: &WorkspaceResolve<'cfg>,
+    package_id: PackageId,
+) -> String {
     let mut deps_string = String::new();
     writeln!(
         deps_string,
@@ -160,7 +167,7 @@ fn packages_to_cargo_toml_deps(resolve: &Resolve, package_id: PackageId) -> Stri
     .for_each(|package_id| {
         let name = package_id.name();
         let version = package_id.version().to_string();
-        let features = resolve.features(package_id);
+        let features = resolve.targeted_resolve.features(package_id);
         let safe_version = version.replace(|c: char| !c.is_alphanumeric(), "_");
         writeln!(deps_string,
             r#"{name}_{safe_version} = {{ package = "{name}", version = "={version}", features = {features:?}, default-features = false }}"#
@@ -189,7 +196,11 @@ impl Drop for FixedTempDir {
     }
 }
 
-fn build_tarball(resolve: &Resolve, tarball_dir: &Path, package_id: PackageId) -> Result<()> {
+fn build_tarball<'cfg>(
+    resolve: &WorkspaceResolve<'cfg>,
+    tarball_dir: &Path,
+    package_id: PackageId,
+) -> Result<()> {
     let tempdir = FixedTempDir::new("cargo-quickbuild-scratchpad")?;
     let scratch_dir = tempdir.path.join("cargo-quickbuild-scratchpad");
 
@@ -237,14 +248,18 @@ fn cargo_init(scratch_dir: &std::path::PathBuf) -> Result<()> {
     Ok(())
 }
 
-fn unpack_tarballs_of_deps(
-    resolve: &Resolve,
+fn unpack_tarballs_of_deps<'cfg>(
+    resolve: &WorkspaceResolve<'cfg>,
     tarball_dir: &Path,
     package_id: PackageId,
     scratch_dir: &Path,
 ) -> Result<BTreeMap<PathBuf, FileTime>> {
     let mut file_timestamps = BTreeMap::default();
-    for dep in resolve.deps(package_id).map(|(id, _)| id).sorted().unique() {
+    for dep in resolve
+        .recursive_deps_including_self(package_id)
+        .into_iter()
+        .filter(|id| id != &package_id)
+    {
         // These should be *guaranteed* to already be built.
         file_timestamps.append(&mut archive::untar_target_dir(
             resolve,
