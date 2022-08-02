@@ -1,43 +1,33 @@
-use std::collections::{BTreeSet, HashMap, HashSet};
-use std::hash::{Hash, Hasher};
-use std::sync::Arc;
+use cargo::core::compiler::UnitInterner;
+use cargo::core::compiler::{CompileMode, RustcTargetData};
 
-use cargo::core::compiler::unit_dependencies::build_unit_dependencies;
-use cargo::core::compiler::unit_graph::{self, UnitDep, UnitGraph};
-use cargo::core::compiler::{standard_lib, TargetInfo};
-use cargo::core::compiler::{BuildConfig, BuildContext, Compilation, Context};
-use cargo::core::compiler::{CompileKind, CompileMode, CompileTarget, RustcTargetData, Unit};
-use cargo::core::compiler::{DefaultExecutor, Executor, UnitInterner};
-use cargo::core::profiles::{Profiles, UnitFor};
-use cargo::core::resolver::features::{self, CliFeatures, FeaturesFor, ForceAllTargets};
-use cargo::core::resolver::{HasDevUnits, Resolve};
-use cargo::core::{FeatureValue, Package, PackageSet, Shell, Summary, Target};
-use cargo::core::{PackageId, PackageIdSpec, SourceId, TargetKind, Workspace};
-use cargo::drop_println;
+use cargo::core::resolver::features::ForceAllTargets;
+use cargo::core::resolver::HasDevUnits;
+
+use cargo::core::Workspace;
+
 use cargo::ops::WorkspaceResolve;
 use cargo::ops::{self, CompileOptions, Packages};
-use cargo::util::config::Config;
-use cargo::util::interning::InternedString;
-use cargo::util::restricted_names::is_glob_pattern;
-use cargo::util::{closest_msg, profile, CargoResult, StableHasher};
+
+use cargo::util::CargoResult;
 
 /// copy pasta from the top half of create_bcx(), from cargo-0.61.1/src/cargo/ops/cargo_compile.rs
 pub fn create_resolve<'a, 'cfg>(
     ws: &'a Workspace<'cfg>,
     options: &'a CompileOptions,
-    interner: &'a UnitInterner,
+    _interner: &'a UnitInterner,
 ) -> CargoResult<WorkspaceResolve<'cfg>> {
     let CompileOptions {
         ref build_config,
         ref spec,
         ref cli_features,
         ref filter,
-        ref target_rustdoc_args,
-        ref target_rustc_args,
-        ref target_rustc_crate_types,
-        ref local_rustdoc_args,
-        rustdoc_document_private_items,
-        honor_rust_version,
+        target_rustdoc_args: _,
+        target_rustc_args: _,
+        target_rustc_crate_types: _,
+        local_rustdoc_args: _,
+        rustdoc_document_private_items: _,
+        honor_rust_version: _,
     } = *options;
     let config = ws.config();
 

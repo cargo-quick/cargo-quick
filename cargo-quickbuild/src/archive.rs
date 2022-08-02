@@ -189,7 +189,7 @@ fn get_high_res_mtime<R: Read>(file: &mut Entry<R>) -> Result<FileTime, anyhow::
         .into_iter()
         .find(|e| e.as_ref().unwrap().key().as_ref().unwrap() == &"mtime")
         .map(|x| x.unwrap().value().unwrap())
-        .or_else(|| {
+        .or({
             if low_res_mtime == 123456789 {
                 Some("123456789.0")
             } else {

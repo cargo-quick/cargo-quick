@@ -140,7 +140,7 @@ fn units_to_cargo_toml_deps(computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>, unit
         deps_string,
         "# {} {}",
         unit.deref().pkg.name(),
-        unit.deref().pkg.version().to_string()
+        unit.deref().pkg.version()
     )
     .unwrap();
     std::iter::once(unit).chain(
@@ -169,7 +169,7 @@ fn flatten_deps<'a>(
         return Box::new(std::iter::empty());
     }
     Box::new(
-        (&*computed_deps.get(unit).unwrap())
+        (*computed_deps.get(unit).unwrap())
             .iter()
             .map(|dep| &dep.unit)
             .filter(|dep| dep.target.is_lib() || (dep.pkg.name() == "cc" && panic!("{dep:?}")))
@@ -269,7 +269,7 @@ fn unpack_tarballs_of_deps(
         file_timestamps.append(&mut archive::untar_target_dir(
             tarball_dir,
             computed_deps,
-            &dep,
+            dep,
             scratch_dir,
         )?);
     }
