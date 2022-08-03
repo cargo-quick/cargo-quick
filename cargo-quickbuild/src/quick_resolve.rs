@@ -1,8 +1,11 @@
 use std::collections::BTreeSet;
 
+use cargo::core::dependency::DepKind;
 use cargo::core::{PackageId, Workspace};
 use cargo::ops::tree::graph::Graph;
+use cargo::ops::tree::EdgeKind;
 use cargo::ops::WorkspaceResolve;
+use itertools::Itertools;
 
 /// A wrapper around the cargo core resolve machinery, to make cargo-quickbuild work.
 /// Probably won't be all that quick ;-)
@@ -22,9 +25,37 @@ impl<'cfg, 'a> QuickResolve<'cfg, 'a> {
     ) -> Self {
         unimplemented!("just a shim to make main.rs compile while I get the tests working")
     }
-    pub fn recursive_deps_including_self(&self, _root_package: PackageId) -> BTreeSet<PackageId> {
-        let deps: BTreeSet<PackageId> = Default::default();
+    // FIXME: differentiate between build deps and target deps, to match the behaviour of the resolver.
+    pub fn recursive_deps_including_self(&self, package_id: PackageId) -> BTreeSet<PackageId> {
+        let mut deps: BTreeSet<PackageId> = Default::default();
 
+        deps.insert(package_id);
+
+        let mut indexes = self.graph.indexes_from_ids(&[package_id]);
+        dbg!(&indexes);
+        loop {
+            let layer = {
+                let mut layer: BTreeSet<PackageId> = Default::default();
+                for node_index in indexes {
+                    for kind in [DepKind::Normal, DepKind::Build] {
+                        let deps =
+                            dbg!(self.graph.connected_nodes(node_index, &EdgeKind::Dep(kind)));
+                        for idx in deps {
+                            layer.insert(self.graph.package_id_for_index(idx));
+                        }
+                    }
+                }
+                layer = layer.difference(&deps).copied().collect();
+                layer
+            };
+            if layer.is_empty() {
+                break;
+            }
+            indexes = self
+                .graph
+                .indexes_from_ids(&layer.iter().copied().collect_vec());
+            deps.extend(layer);
+        }
         deps
     }
 }
@@ -64,7 +95,12 @@ mod tests {
             cli_features: options.cli_features.clone(),
             packages: options.spec.clone(),
             target: Target::Host,
-            edge_kinds: Default::default(),
+            edge_kinds: [
+                EdgeKind::Dep(DepKind::Normal),
+                EdgeKind::Dep(DepKind::Build),
+            ]
+            .into_iter()
+            .collect(),
             invert: Default::default(),
             pkgs_to_prune: Default::default(),
             prefix: Prefix::None,
@@ -109,7 +145,7 @@ mod tests {
             dep_names_for_package(&resolve, "cc"),
             &["cc", "jobserver", "libc"]
         );
-        // $ cargo tree -p libz-sys --no-dedupe --edges=all
+        // $ cargo tree --no-dedupe --edges=all -p libz-sys
         // libz-sys v1.1.6
         // └── libc feature "default"
         //     ├── libc v0.2.125
@@ -128,15 +164,88 @@ mod tests {
         //     └── pkg-config v0.3.25
         assert_eq!(
             dep_names_for_package(&resolve, "libz-sys"),
-            // FIXME: where the hell is `jobserver`, and where are "pkg-config", "vcpkg" coming from?
             &["cc", "jobserver", "libc", "libz-sys", "pkg-config"]
         );
+        // $ cargo tree --no-dedupe --edges=all -p libnghttp2-sys
+        // libnghttp2-sys v0.1.7+1.45.0
+        // └── libc feature "default"
+        //     ├── libc v0.2.125
+        //     └── libc feature "std"
+        //         └── libc v0.2.125
+        // [build-dependencies]
+        // └── cc feature "default"
+        //     └── cc v1.0.73
+        //         └── jobserver feature "default"
+        //             └── jobserver v0.1.24
+        //                 └── libc feature "default"
+        //                     ├── libc v0.2.125
+        //                     └── libc feature "std"
+        //                         └── libc v0.2.125
         assert_eq!(
             dep_names_for_package(&resolve, "libnghttp2-sys"),
-            // FIXME: where the hell is `jobserver`?
-            &["cc", "libc", "libnghttp2-sys"]
+            &["cc", "jobserver", "libc", "libnghttp2-sys"]
         );
-        drop(resolve);
+        // cargo tree --no-dedupe --edges=all -p curl-sys
+        // curl-sys v0.4.55+curl-7.83.1
+        // ├── libc feature "default"
+        // │   ├── libc v0.2.125
+        // │   └── libc feature "std"
+        // │       └── libc v0.2.125
+        // ├── libnghttp2-sys feature "default"
+        // │   └── libnghttp2-sys v0.1.7+1.45.0
+        // │       └── libc feature "default"
+        // │           ├── libc v0.2.125
+        // │           └── libc feature "std"
+        // │               └── libc v0.2.125
+        // │       [build-dependencies]
+        // │       └── cc feature "default"
+        // │           └── cc v1.0.73
+        // │               └── jobserver feature "default"
+        // │                   └── jobserver v0.1.24
+        // │                       └── libc feature "default"
+        // │                           ├── libc v0.2.125
+        // │                           └── libc feature "std"
+        // │                               └── libc v0.2.125
+        // └── libz-sys feature "libc"
+        //     └── libz-sys v1.1.6
+        //         └── libc feature "default"
+        //             ├── libc v0.2.125
+        //             └── libc feature "std"
+        //                 └── libc v0.2.125
+        //         [build-dependencies]
+        //         ├── cc feature "default"
+        //         │   └── cc v1.0.73
+        //         │       └── jobserver feature "default"
+        //         │           └── jobserver v0.1.24
+        //         │               └── libc feature "default"
+        //         │                   ├── libc v0.2.125
+        //         │                   └── libc feature "std"
+        //         │                       └── libc v0.2.125
+        //         └── pkg-config feature "default"
+        //             └── pkg-config v0.3.25
+        // [build-dependencies]
+        // ├── cc feature "default"
+        // │   └── cc v1.0.73
+        // │       └── jobserver feature "default"
+        // │           └── jobserver v0.1.24
+        // │               └── libc feature "default"
+        // │                   ├── libc v0.2.125
+        // │                   └── libc feature "std"
+        // │                       └── libc v0.2.125
+        // └── pkg-config feature "default"
+        //     └── pkg-config v0.3.25
+        assert_eq!(
+            dep_names_for_package(&resolve, "curl-sys"),
+            &[
+                "cc",
+                "curl-sys",
+                "jobserver",
+                "libc",
+                "libnghttp2-sys",
+                "libz-sys",
+                "pkg-config"
+            ]
+        );
 
         Ok(())
     }
