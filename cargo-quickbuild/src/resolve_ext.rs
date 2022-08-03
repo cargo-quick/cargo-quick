@@ -19,28 +19,40 @@ impl<'cfg> ResolveExt for WorkspaceResolve<'cfg> {
         loop {
             let layer = deps
                 .iter()
-                .map(|id| self.targeted_resolve.deps(*id))
-                .flatten()
-                .filter(|(_, deps)| {
-                    // FIXME: this feels lossy.
-                    // * HostDep is documented as being for proc macros only. By doing this, I think I am emulating the v1 resolver behaviour.
-                    // * I am only passing in package name, but there may be multiple versions of the package in my tree.
-                    // * I don't think it's valid to use root package. I think I need the parent package in each case.
+                .map(|id| {
+                    self.targeted_resolve
+                        .deps(*id)
+                        .filter(move |(_dep_id, deps)| {
+                            // FIXME: this feels lossy.
+                            // * HostDep is documented as being for proc macros only. By doing this, I think I am emulating the v1 resolver behaviour.
+                            // * I am only passing in package name, but there may be multiple versions of the package in my tree.
+                            // * I don't think it's valid to use root package. I think I need the parent package in each case.
 
-                    deps.iter().any(|dep| {
-                        (!dep.is_optional())
-                            || self.resolved_features.is_dep_activated(
-                                root_package,
-                                FeaturesFor::NormalOrDev,
-                                dep.name_in_toml(),
-                            )
-                            || self.resolved_features.is_dep_activated(
-                                root_package,
-                                FeaturesFor::HostDep,
-                                dep.name_in_toml(),
-                            )
-                    })
+                            deps.iter().any(|dep| {
+                                if dep.name_in_toml() == "libc" {
+                                    dbg!((id, _dep_id, dep));
+                                };
+                                // FIXME: vcpkg is
+                                // ```toml
+                                // [target.'cfg(target_env = "msvc")'.build-dependencies]
+                                // vcpkg = "0.2"
+                                // ```
+                                // The `vcpkg` dep has platform `cfg(target_env = "msvc")`, and `libc` has platform `cfg(unix)`
+                                // self.resolved_features doesn't seem to be picking up that we're building for unix or something?
+                                // How does cargo tree do it?
+                                self.resolved_features.is_dep_activated(
+                                    *id,
+                                    FeaturesFor::NormalOrDev,
+                                    dep.name_in_toml(),
+                                ) || self.resolved_features.is_dep_activated(
+                                    *id,
+                                    FeaturesFor::HostDep,
+                                    dep.name_in_toml(),
+                                )
+                            })
+                        })
                 })
+                .flatten()
                 .map(|(id, _)| id)
                 .filter(|id| !deps.contains(id))
                 .collect_vec();
@@ -72,6 +84,12 @@ mod tests {
         let resolve = create_resolve(&ws, &options, &interner)?;
 
         assert_eq!(dep_names_for_package(&resolve, "libc"), &["libc"]);
+        // $ cargo tree --no-dedupe --edges=all -p jobserver
+        // jobserver v0.1.24
+        // └── libc feature "default"
+        //     ├── libc v0.2.125
+        //     └── libc feature "std"
+        //         └── libc v0.2.125
         assert_eq!(
             dep_names_for_package(&resolve, "jobserver"),
             &["jobserver", "libc"]
@@ -80,10 +98,27 @@ mod tests {
             dep_names_for_package(&resolve, "cc"),
             &["cc", "jobserver", "libc"]
         );
+        // $ cargo tree -p libz-sys --no-dedupe --edges=all
+        // libz-sys v1.1.6
+        // └── libc feature "default"
+        //     ├── libc v0.2.125
+        //     └── libc feature "std"
+        //         └── libc v0.2.125
+        // [build-dependencies]
+        // ├── cc feature "default"
+        // │   └── cc v1.0.73
+        // │       └── jobserver feature "default"
+        // │           └── jobserver v0.1.24
+        // │               └── libc feature "default"
+        // │                   ├── libc v0.2.125
+        // │                   └── libc feature "std"
+        // │                       └── libc v0.2.125
+        // └── pkg-config feature "default"
+        //     └── pkg-config v0.3.25
         assert_eq!(
             dep_names_for_package(&resolve, "libz-sys"),
             // FIXME: where the hell is `jobserver`, and where are "pkg-config", "vcpkg" coming from?
-            &["cc", "libc", "libz-sys", "pkg-config", "vcpkg"]
+            &["cc", "jobserver", "libc", "libz-sys", "pkg-config"]
         );
         assert_eq!(
             dep_names_for_package(&resolve, "libnghttp2-sys"),
