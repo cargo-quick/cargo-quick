@@ -6,12 +6,12 @@ use std::{collections::BTreeMap, path::PathBuf};
 
 use anyhow::{Context, Ok, Result};
 use cargo::core::PackageId;
-use cargo::ops::WorkspaceResolve;
 use filetime::FileTime;
 use tar::{Archive, Builder, Entry, EntryType};
 
 use crate::command;
 use crate::pax::{BuilderExt, PaxBuilder};
+use crate::quick_resolve::QuickResolve;
 use crate::std_ext::ExitStatusExt;
 
 use super::get_tarball_path;
@@ -112,7 +112,7 @@ fn append_path_with_mtime(
 }
 
 pub(crate) fn untar_target_dir<'cfg>(
-    resolve: &WorkspaceResolve<'cfg>,
+    resolve: &QuickResolve<'cfg>,
     tarball_dir: &Path,
     package_id: PackageId,
     scratch_dir: &Path,

@@ -5,11 +5,17 @@ use cargo::core::PackageId;
 use cargo::ops::WorkspaceResolve;
 use itertools::Itertools;
 
-pub trait ResolveExt {
-    fn recursive_deps_including_self(&self, root_package: PackageId) -> BTreeSet<PackageId>;
+/// A wrapper around the cargo core resolve machinery, to make cargo-quickbuild work.
+/// Probably won't be all that quick ;-)
+pub struct QuickResolve<'cfg> {
+    pub workspace_resolve: WorkspaceResolve<'cfg>,
 }
-impl<'cfg> ResolveExt for WorkspaceResolve<'cfg> {
-    fn recursive_deps_including_self(&self, root_package: PackageId) -> BTreeSet<PackageId> {
+
+impl<'cfg> QuickResolve<'cfg> {
+    pub fn new(workspace_resolve: WorkspaceResolve<'cfg>) -> Self {
+        Self { workspace_resolve }
+    }
+    pub fn recursive_deps_including_self(&self, root_package: PackageId) -> BTreeSet<PackageId> {
         // FIXME: where the hell is `autocfg` coming from?
         let mut deps: BTreeSet<PackageId> = Default::default();
 
@@ -20,9 +26,8 @@ impl<'cfg> ResolveExt for WorkspaceResolve<'cfg> {
             let layer = deps
                 .iter()
                 .map(|id| {
-                    self.targeted_resolve
-                        .deps(*id)
-                        .filter(move |(_dep_id, deps)| {
+                    self.workspace_resolve.targeted_resolve.deps(*id).filter(
+                        move |(_dep_id, deps)| {
                             // FIXME: this feels lossy.
                             // * HostDep is documented as being for proc macros only. By doing this, I think I am emulating the v1 resolver behaviour.
                             // * I am only passing in package name, but there may be multiple versions of the package in my tree.
@@ -40,17 +45,18 @@ impl<'cfg> ResolveExt for WorkspaceResolve<'cfg> {
                                 // The `vcpkg` dep has platform `cfg(target_env = "msvc")`, and `libc` has platform `cfg(unix)`
                                 // self.resolved_features doesn't seem to be picking up that we're building for unix or something?
                                 // How does cargo tree do it?
-                                self.resolved_features.is_dep_activated(
+                                self.workspace_resolve.resolved_features.is_dep_activated(
                                     *id,
                                     FeaturesFor::NormalOrDev,
                                     dep.name_in_toml(),
-                                ) || self.resolved_features.is_dep_activated(
+                                ) || self.workspace_resolve.resolved_features.is_dep_activated(
                                     *id,
                                     FeaturesFor::HostDep,
                                     dep.name_in_toml(),
                                 )
                             })
-                        })
+                        },
+                    )
                 })
                 .flatten()
                 .map(|(id, _)| id)
@@ -81,7 +87,7 @@ mod tests {
         let ws = Workspace::new(&Path::new("Cargo.toml").canonicalize()?, &config)?;
         let options = CompileOptions::new(&config, CompileMode::Build)?;
         let interner = UnitInterner::new();
-        let resolve = create_resolve(&ws, &options, &interner)?;
+        let resolve = QuickResolve::new(create_resolve(&ws, &options, &interner)?);
 
         assert_eq!(dep_names_for_package(&resolve, "libc"), &["libc"]);
         // $ cargo tree --no-dedupe --edges=all -p jobserver
@@ -129,8 +135,9 @@ mod tests {
         Ok(())
     }
 
-    fn package_by_name(resolve: &WorkspaceResolve, name: &str) -> PackageId {
+    fn package_by_name(resolve: &QuickResolve, name: &str) -> PackageId {
         let [root_package]: [_; 1] = resolve
+            .workspace_resolve
             .targeted_resolve
             .iter()
             .filter(|id| id.name() == name)
@@ -144,7 +151,7 @@ mod tests {
         packages_to_build.iter().map(|dep| dep.name()).collect_vec()
     }
 
-    fn dep_names_for_package(resolve: &WorkspaceResolve, name: &str) -> Vec<InternedString> {
+    fn dep_names_for_package(resolve: &QuickResolve, name: &str) -> Vec<InternedString> {
         package_names(&resolve.recursive_deps_including_self(package_by_name(resolve, name)))
     }
 }

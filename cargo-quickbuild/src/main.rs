@@ -1,8 +1,8 @@
 mod archive;
 mod deps;
 mod pax;
+mod quick_resolve;
 mod resolve;
-mod resolve_ext;
 mod stats;
 mod std_ext;
 
@@ -16,13 +16,13 @@ use std::{ffi::OsStr, process::Command};
 use anyhow::{Context, Result};
 use cargo::core::compiler::{CompileMode, UnitInterner};
 use cargo::core::{PackageId, Workspace};
-use cargo::ops::{CompileOptions, WorkspaceResolve};
+use cargo::ops::CompileOptions;
 use cargo::Config;
 use crypto_hash::{hex_digest, Algorithm};
 use filetime::FileTime;
+use quick_resolve::QuickResolve;
 
 use crate::resolve::create_resolve;
-use crate::resolve_ext::ResolveExt;
 use crate::stats::{ComputedStats, Stats};
 use crate::std_ext::ExitStatusExt;
 
@@ -45,7 +45,7 @@ fn main() -> Result<()> {
 }
 
 fn outstanding_deps<'cfg>(
-    resolve: &WorkspaceResolve<'cfg>,
+    resolve: &QuickResolve<'cfg>,
     built_packages: &HashSet<PackageId>,
     package_id: PackageId,
 ) -> Vec<PackageId> {
@@ -63,10 +63,11 @@ fn unpack_or_build_packages(tarball_dir: &Path) -> Result<()> {
     let ws = Workspace::new(&Path::new("Cargo.toml").canonicalize()?, &config)?;
     let options = CompileOptions::new(&config, CompileMode::Build)?;
     let interner = UnitInterner::new();
-    let resolve = create_resolve(&ws, &options, &interner)?;
+    let resolve = QuickResolve::new(create_resolve(&ws, &options, &interner)?);
 
     // let root_package = resolve.sort()[0];
     let [root_package]: [_; 1] = resolve
+        .workspace_resolve
         .targeted_resolve
         .iter()
         .filter(|id| id.name() == "curl-sys")
@@ -113,7 +114,7 @@ fn unpack_or_build_packages(tarball_dir: &Path) -> Result<()> {
 }
 
 fn build_tarball_if_not_exists<'cfg>(
-    resolve: &WorkspaceResolve<'cfg>,
+    resolve: &QuickResolve<'cfg>,
     tarball_dir: &Path,
     package_id: PackageId,
 ) -> Result<()> {
@@ -134,7 +135,7 @@ fn build_tarball_if_not_exists<'cfg>(
 
 // FIXME: put a cache on this?
 fn get_tarball_path<'cfg>(
-    resolve: &WorkspaceResolve<'cfg>,
+    resolve: &QuickResolve<'cfg>,
     tarball_dir: &Path,
     package_id: PackageId,
 ) -> PathBuf {
@@ -150,7 +151,7 @@ fn get_tarball_path<'cfg>(
 }
 
 fn packages_to_cargo_toml_deps<'cfg>(
-    resolve: &WorkspaceResolve<'cfg>,
+    resolve: &QuickResolve<'cfg>,
     package_id: PackageId,
 ) -> String {
     let mut deps_string = String::new();
@@ -166,7 +167,7 @@ fn packages_to_cargo_toml_deps<'cfg>(
     .for_each(|package_id| {
         let name = package_id.name();
         let version = package_id.version().to_string();
-        let features = resolve.targeted_resolve.features(package_id);
+        let features = resolve.workspace_resolve.targeted_resolve.features(package_id);
         let safe_version = version.replace(|c: char| !c.is_alphanumeric(), "_");
         writeln!(deps_string,
             r#"{name}_{safe_version} = {{ package = "{name}", version = "={version}", features = {features:?}, default-features = false }}"#
@@ -196,7 +197,7 @@ impl Drop for FixedTempDir {
 }
 
 fn build_tarball<'cfg>(
-    resolve: &WorkspaceResolve<'cfg>,
+    resolve: &QuickResolve<'cfg>,
     tarball_dir: &Path,
     package_id: PackageId,
 ) -> Result<()> {
@@ -248,7 +249,7 @@ fn cargo_init(scratch_dir: &std::path::PathBuf) -> Result<()> {
 }
 
 fn unpack_tarballs_of_deps<'cfg>(
-    resolve: &WorkspaceResolve<'cfg>,
+    resolve: &QuickResolve<'cfg>,
     tarball_dir: &Path,
     package_id: PackageId,
     scratch_dir: &Path,
