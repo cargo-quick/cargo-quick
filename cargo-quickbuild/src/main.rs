@@ -6,6 +6,7 @@ mod resolve;
 mod stats;
 mod std_ext;
 
+use std::collections::HashMap;
 use std::collections::{BTreeMap, HashSet};
 use std::fmt::Write as _;
 use std::fs::remove_dir_all;
@@ -14,8 +15,12 @@ use std::path::{Path, PathBuf};
 use std::{ffi::OsStr, process::Command};
 
 use anyhow::{Context, Result};
+use cargo::core::compiler::RustcTargetData;
 use cargo::core::compiler::{CompileMode, UnitInterner};
+use cargo::core::dependency::DepKind;
+use cargo::core::Package;
 use cargo::core::{PackageId, Workspace};
+use cargo::ops::tree::{Charset, EdgeKind, Prefix, Target, TreeOptions};
 use cargo::ops::CompileOptions;
 use cargo::Config;
 use crypto_hash::{hex_digest, Algorithm};
@@ -62,8 +67,55 @@ fn unpack_or_build_packages(tarball_dir: &Path) -> Result<()> {
     // FIXME: compile cargo in release mode
     let ws = Workspace::new(&Path::new("Cargo.toml").canonicalize()?, &config)?;
     let options = CompileOptions::new(&config, CompileMode::Build)?;
+
     let interner = UnitInterner::new();
-    let resolve = QuickResolve::new_shim(&ws, create_resolve(&ws, &options, &interner)?);
+    let workspace_resolve = create_resolve(&ws, &options, &interner)?;
+    let requested_kinds = &options.build_config.requested_kinds;
+    let target_data = RustcTargetData::new(&ws, requested_kinds)?;
+    let package_map: HashMap<PackageId, &Package> = workspace_resolve
+        .pkg_set
+        .packages()
+        .map(|pkg| (pkg.package_id(), pkg))
+        .collect();
+
+    let opts = TreeOptions {
+        cli_features: options.cli_features.clone(),
+        packages: options.spec.clone(),
+        target: Target::Host,
+        edge_kinds: [
+            EdgeKind::Dep(DepKind::Normal),
+            EdgeKind::Dep(DepKind::Build),
+        ]
+        .into_iter()
+        .collect(),
+        invert: Default::default(),
+        pkgs_to_prune: Default::default(),
+        prefix: Prefix::None,
+        no_dedupe: Default::default(),
+        duplicates: Default::default(),
+        charset: Charset::Ascii,
+        format: Default::default(),
+        graph_features: Default::default(),
+        max_display_depth: Default::default(),
+        no_proc_macro: Default::default(),
+    };
+    let graph = cargo::ops::tree::graph::build(
+        &ws,
+        &workspace_resolve.targeted_resolve,
+        &workspace_resolve.resolved_features,
+        &options.spec.to_package_id_specs(&ws)?,
+        &options.cli_features,
+        &target_data,
+        &requested_kinds,
+        package_map,
+        &opts,
+    )
+    .unwrap();
+    let resolve = QuickResolve {
+        ws: &ws,
+        workspace_resolve: &workspace_resolve,
+        graph: graph,
+    };
 
     // let root_package = resolve.sort()[0];
     let [root_package]: [_; 1] = resolve
@@ -285,10 +337,10 @@ fn add_deps_to_manifest_and_run_cargo_build(
     cargo_toml.flush()?;
     drop(cargo_toml);
 
-    command(["cargo", "tree", "-vv", "--no-dedupe", "--edges=all"])
-        .current_dir(scratch_dir)
-        .status()?
-        .exit_ok_ext()?;
+    // command(["cargo", "tree", "-vv", "--no-dedupe", "--edges=all"])
+    //     .current_dir(scratch_dir)
+    //     .status()?
+    //     .exit_ok_ext()?;
 
     command(["cargo", "build", "--jobs=1", "--offline"])
         .current_dir(scratch_dir)

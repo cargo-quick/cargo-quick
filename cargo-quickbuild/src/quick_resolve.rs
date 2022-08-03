@@ -19,12 +19,6 @@ where
 }
 
 impl<'cfg, 'a> QuickResolve<'cfg, 'a> {
-    pub fn new_shim(
-        _ws: &'cfg Workspace<'cfg>,
-        _workspace_resolve: WorkspaceResolve<'cfg>,
-    ) -> Self {
-        unimplemented!("just a shim to make main.rs compile while I get the tests working")
-    }
     // FIXME: differentiate between build deps and target deps, to match the behaviour of the resolver.
     pub fn recursive_deps_including_self(&self, package_id: PackageId) -> BTreeSet<PackageId> {
         let mut deps: BTreeSet<PackageId> = Default::default();
@@ -32,14 +26,12 @@ impl<'cfg, 'a> QuickResolve<'cfg, 'a> {
         deps.insert(package_id);
 
         let mut indexes = self.graph.indexes_from_ids(&[package_id]);
-        dbg!(&indexes);
         loop {
             let layer = {
                 let mut layer: BTreeSet<PackageId> = Default::default();
                 for node_index in indexes {
                     for kind in [DepKind::Normal, DepKind::Build] {
-                        let deps =
-                            dbg!(self.graph.connected_nodes(node_index, &EdgeKind::Dep(kind)));
+                        let deps = self.graph.connected_nodes(node_index, &EdgeKind::Dep(kind));
                         for idx in deps {
                             layer.insert(self.graph.package_id_for_index(idx));
                         }
