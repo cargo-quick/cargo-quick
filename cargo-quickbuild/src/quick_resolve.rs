@@ -1,80 +1,43 @@
 use std::collections::BTreeSet;
 
-use cargo::core::resolver::features::FeaturesFor;
-use cargo::core::PackageId;
+use cargo::core::{PackageId, Workspace};
+use cargo::ops::tree::graph::Graph;
 use cargo::ops::WorkspaceResolve;
-use itertools::Itertools;
 
 /// A wrapper around the cargo core resolve machinery, to make cargo-quickbuild work.
 /// Probably won't be all that quick ;-)
-pub struct QuickResolve<'cfg> {
-    pub workspace_resolve: WorkspaceResolve<'cfg>,
+pub struct QuickResolve<'cfg, 'a>
+where
+    'cfg: 'a,
+{
+    pub ws: &'a Workspace<'cfg>,
+    pub workspace_resolve: &'a WorkspaceResolve<'cfg>,
+    pub graph: Graph<'a>,
 }
 
-impl<'cfg> QuickResolve<'cfg> {
-    pub fn new(workspace_resolve: WorkspaceResolve<'cfg>) -> Self {
-        Self { workspace_resolve }
+impl<'cfg, 'a> QuickResolve<'cfg, 'a> {
+    pub fn new_shim(
+        _ws: &'cfg Workspace<'cfg>,
+        _workspace_resolve: WorkspaceResolve<'cfg>,
+    ) -> Self {
+        unimplemented!("just a shim to make main.rs compile while I get the tests working")
     }
-    pub fn recursive_deps_including_self(&self, root_package: PackageId) -> BTreeSet<PackageId> {
-        // FIXME: where the hell is `autocfg` coming from?
-        let mut deps: BTreeSet<PackageId> = Default::default();
+    pub fn recursive_deps_including_self(&self, _root_package: PackageId) -> BTreeSet<PackageId> {
+        let deps: BTreeSet<PackageId> = Default::default();
 
-        deps.insert(root_package);
-
-        // recusive deps
-        loop {
-            let layer = deps
-                .iter()
-                .map(|id| {
-                    self.workspace_resolve.targeted_resolve.deps(*id).filter(
-                        move |(_dep_id, deps)| {
-                            // FIXME: this feels lossy.
-                            // * HostDep is documented as being for proc macros only. By doing this, I think I am emulating the v1 resolver behaviour.
-                            // * I am only passing in package name, but there may be multiple versions of the package in my tree.
-                            // * I don't think it's valid to use root package. I think I need the parent package in each case.
-
-                            deps.iter().any(|dep| {
-                                if dep.name_in_toml() == "libc" {
-                                    dbg!((id, _dep_id, dep));
-                                };
-                                // FIXME: vcpkg is
-                                // ```toml
-                                // [target.'cfg(target_env = "msvc")'.build-dependencies]
-                                // vcpkg = "0.2"
-                                // ```
-                                // The `vcpkg` dep has platform `cfg(target_env = "msvc")`, and `libc` has platform `cfg(unix)`
-                                // self.resolved_features doesn't seem to be picking up that we're building for unix or something?
-                                // How does cargo tree do it?
-                                self.workspace_resolve.resolved_features.is_dep_activated(
-                                    *id,
-                                    FeaturesFor::NormalOrDev,
-                                    dep.name_in_toml(),
-                                ) || self.workspace_resolve.resolved_features.is_dep_activated(
-                                    *id,
-                                    FeaturesFor::HostDep,
-                                    dep.name_in_toml(),
-                                )
-                            })
-                        },
-                    )
-                })
-                .flatten()
-                .map(|(id, _)| id)
-                .filter(|id| !deps.contains(id))
-                .collect_vec();
-            // dbg!(&layer);
-            if layer.is_empty() {
-                break;
-            }
-            deps.extend(layer)
-        }
         deps
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
+    use cargo::core::compiler::RustcTargetData;
+    use cargo::core::Package;
+    use cargo::ops::tree::{Charset, Prefix, Target, TreeOptions};
     use cargo::util::interning::InternedString;
+    use itertools::Itertools;
 
     use super::super::*;
     use super::*;
@@ -86,8 +49,50 @@ mod tests {
         // FIXME: compile cargo in release mode
         let ws = Workspace::new(&Path::new("Cargo.toml").canonicalize()?, &config)?;
         let options = CompileOptions::new(&config, CompileMode::Build)?;
+
         let interner = UnitInterner::new();
-        let resolve = QuickResolve::new(create_resolve(&ws, &options, &interner)?);
+        let workspace_resolve = create_resolve(&ws, &options, &interner)?;
+        let requested_kinds = &options.build_config.requested_kinds;
+        let target_data = RustcTargetData::new(&ws, requested_kinds)?;
+        let package_map: HashMap<PackageId, &Package> = workspace_resolve
+            .pkg_set
+            .packages()
+            .map(|pkg| (pkg.package_id(), pkg))
+            .collect();
+
+        let opts = TreeOptions {
+            cli_features: options.cli_features.clone(),
+            packages: options.spec.clone(),
+            target: Target::Host,
+            edge_kinds: Default::default(),
+            invert: Default::default(),
+            pkgs_to_prune: Default::default(),
+            prefix: Prefix::None,
+            no_dedupe: Default::default(),
+            duplicates: Default::default(),
+            charset: Charset::Ascii,
+            format: Default::default(),
+            graph_features: Default::default(),
+            max_display_depth: Default::default(),
+            no_proc_macro: Default::default(),
+        };
+        let graph = cargo::ops::tree::graph::build(
+            &ws,
+            &workspace_resolve.targeted_resolve,
+            &workspace_resolve.resolved_features,
+            &options.spec.to_package_id_specs(&ws)?,
+            &options.cli_features,
+            &target_data,
+            &requested_kinds,
+            package_map,
+            &opts,
+        )
+        .unwrap();
+        let resolve = QuickResolve {
+            ws: &ws,
+            workspace_resolve: &workspace_resolve,
+            graph: graph,
+        };
 
         assert_eq!(dep_names_for_package(&resolve, "libc"), &["libc"]);
         // $ cargo tree --no-dedupe --edges=all -p jobserver
@@ -131,6 +136,7 @@ mod tests {
             // FIXME: where the hell is `jobserver`?
             &["cc", "libc", "libnghttp2-sys"]
         );
+        drop(resolve);
 
         Ok(())
     }

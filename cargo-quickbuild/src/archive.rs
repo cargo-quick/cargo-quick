@@ -111,8 +111,8 @@ fn append_path_with_mtime(
     Ok(())
 }
 
-pub(crate) fn untar_target_dir<'cfg>(
-    resolve: &QuickResolve<'cfg>,
+pub(crate) fn untar_target_dir<'cfg, 'a>(
+    resolve: &QuickResolve<'cfg, 'a>,
     tarball_dir: &Path,
     package_id: PackageId,
     scratch_dir: &Path,

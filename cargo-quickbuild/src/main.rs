@@ -44,8 +44,8 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn outstanding_deps<'cfg>(
-    resolve: &QuickResolve<'cfg>,
+fn outstanding_deps<'cfg, 'a>(
+    resolve: &QuickResolve<'cfg, 'a>,
     built_packages: &HashSet<PackageId>,
     package_id: PackageId,
 ) -> Vec<PackageId> {
@@ -63,7 +63,7 @@ fn unpack_or_build_packages(tarball_dir: &Path) -> Result<()> {
     let ws = Workspace::new(&Path::new("Cargo.toml").canonicalize()?, &config)?;
     let options = CompileOptions::new(&config, CompileMode::Build)?;
     let interner = UnitInterner::new();
-    let resolve = QuickResolve::new(create_resolve(&ws, &options, &interner)?);
+    let resolve = QuickResolve::new_shim(&ws, create_resolve(&ws, &options, &interner)?);
 
     // let root_package = resolve.sort()[0];
     let [root_package]: [_; 1] = resolve
@@ -113,8 +113,8 @@ fn unpack_or_build_packages(tarball_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-fn build_tarball_if_not_exists<'cfg>(
-    resolve: &QuickResolve<'cfg>,
+fn build_tarball_if_not_exists<'cfg, 'a>(
+    resolve: &QuickResolve<'cfg, 'a>,
     tarball_dir: &Path,
     package_id: PackageId,
 ) -> Result<()> {
@@ -134,8 +134,8 @@ fn build_tarball_if_not_exists<'cfg>(
 }
 
 // FIXME: put a cache on this?
-fn get_tarball_path<'cfg>(
-    resolve: &QuickResolve<'cfg>,
+fn get_tarball_path<'cfg, 'a>(
+    resolve: &QuickResolve<'cfg, 'a>,
     tarball_dir: &Path,
     package_id: PackageId,
 ) -> PathBuf {
@@ -150,8 +150,8 @@ fn get_tarball_path<'cfg>(
     tarball_dir.join(format!("{package_name}-{package_version}-{digest}.tar"))
 }
 
-fn packages_to_cargo_toml_deps<'cfg>(
-    resolve: &QuickResolve<'cfg>,
+fn packages_to_cargo_toml_deps<'cfg, 'a>(
+    resolve: &QuickResolve<'cfg, 'a>,
     package_id: PackageId,
 ) -> String {
     let mut deps_string = String::new();
@@ -196,8 +196,8 @@ impl Drop for FixedTempDir {
     }
 }
 
-fn build_tarball<'cfg>(
-    resolve: &QuickResolve<'cfg>,
+fn build_tarball<'cfg, 'a>(
+    resolve: &QuickResolve<'cfg, 'a>,
     tarball_dir: &Path,
     package_id: PackageId,
 ) -> Result<()> {
@@ -248,8 +248,8 @@ fn cargo_init(scratch_dir: &std::path::PathBuf) -> Result<()> {
     Ok(())
 }
 
-fn unpack_tarballs_of_deps<'cfg>(
-    resolve: &QuickResolve<'cfg>,
+fn unpack_tarballs_of_deps<'cfg, 'a>(
+    resolve: &QuickResolve<'cfg, 'a>,
     tarball_dir: &Path,
     package_id: PackageId,
     scratch_dir: &Path,
