@@ -299,8 +299,12 @@ fn build_tarball<'cfg, 'a>(
     add_deps_to_manifest_and_run_cargo_build(deps_string, &scratch_dir)?;
     stats.build_done();
 
-    // we write to a temporary location and then mv because mv is an atomic operation in posix
-    let temp_tarball_path = tempdir.path.join("target.tar");
+    // We write to a temporary location and then mv because mv is an atomic operation in posix
+    // This has to be on the same filesystem, so we can't put it in the tempdir.
+    let tarball_path = get_tarball_path(resolve, tarball_dir, package_id);
+    let stats_path = tarball_path.with_extension("stats.json");
+
+    let temp_tarball_path = tarball_path.with_extension("temp.tar");
     let temp_stats_path = temp_tarball_path.with_extension("stats.json");
 
     archive::tar_target_dir(scratch_dir, &temp_tarball_path, &file_timestamps)?;
@@ -311,8 +315,7 @@ fn build_tarball<'cfg, 'a>(
         &ComputedStats::from(stats),
     )?;
 
-    let tarball_path = get_tarball_path(resolve, tarball_dir, package_id);
-    std::fs::rename(&temp_stats_path, tarball_path.with_extension("stats.json"))?;
+    std::fs::rename(&temp_stats_path, stats_path)?;
     std::fs::rename(&temp_tarball_path, &tarball_path)?;
     println!("wrote to {tarball_path:?}");
 
