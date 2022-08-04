@@ -9,12 +9,11 @@ mod std_ext;
 use std::collections::{BTreeMap, HashSet};
 use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write as _;
-use std::fs::remove_dir_all;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::{ffi::OsStr, process::Command};
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use cargo::core::compiler::RustcTargetData;
 use cargo::core::compiler::{CompileMode, UnitInterner};
 use cargo::core::dependency::DepKind;
@@ -26,6 +25,7 @@ use cargo::Config;
 use crypto_hash::{hex_digest, Algorithm};
 use filetime::FileTime;
 use quick_resolve::QuickResolve;
+use tempdir::TempDir;
 
 use crate::resolve::create_resolve;
 use crate::stats::{ComputedStats, Stats};
@@ -256,33 +256,13 @@ fn deps_to_string(resolve: &QuickResolve, deps: BTreeSet<PackageId>) -> String {
     }).collect()
 }
 
-// HACK: keep tempdir location fixed to see if that fixes compilation issues.
-struct FixedTempDir {
-    path: PathBuf,
-}
-
-impl FixedTempDir {
-    fn new(name: &str) -> Result<Self> {
-        let path = std::env::temp_dir().join(name);
-        let _ = remove_dir_all(&path);
-        std::fs::create_dir(&path).with_context(|| format!("making tempdir in {path:?}"))?;
-        Ok(FixedTempDir { path })
-    }
-}
-
-impl Drop for FixedTempDir {
-    fn drop(&mut self) {
-        // let _ = remove_dir_all(&self.path);
-    }
-}
-
 fn build_tarball<'cfg, 'a>(
     resolve: &QuickResolve<'cfg, 'a>,
     tarball_dir: &Path,
     package_id: PackageId,
 ) -> Result<()> {
-    let tempdir = FixedTempDir::new("cargo-quickbuild-scratchpad")?;
-    let scratch_dir = tempdir.path.join("cargo-quickbuild-scratchpad");
+    let tempdir = TempDir::new("cargo-quickbuild-scratchpad")?;
+    let scratch_dir = tempdir.path().join("cargo-quickbuild-scratchpad");
 
     // FIXME: this stats tracking is making it awkward to refactor this method into multiple bits.
     // It might be better to make a Context struct that contains computed_deps and stats or something?
