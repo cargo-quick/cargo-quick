@@ -57,7 +57,7 @@ fn outstanding_deps<'cfg, 'a>(
     resolve
         .recursive_deps_including_self(package_id)
         .into_iter()
-        .filter(|dep| dep != &package_id && !built_packages.contains(&dep))
+        .filter(|dep| dep != &package_id && !built_packages.contains(dep))
         .collect()
 }
 
@@ -106,7 +106,7 @@ fn unpack_or_build_packages(tarball_dir: &Path) -> Result<()> {
         &options.spec.to_package_id_specs(&ws)?,
         &options.cli_features,
         &target_data,
-        &requested_kinds,
+        requested_kinds,
         package_map,
         &opts,
     )
@@ -114,25 +114,23 @@ fn unpack_or_build_packages(tarball_dir: &Path) -> Result<()> {
     let resolve = QuickResolve {
         ws: &ws,
         workspace_resolve: &workspace_resolve,
-        graph: graph,
+        graph,
     };
 
     // FIXME: there has to be a better way to ask cargo for the list of root packages.
-    let pkg = resolve
+    let pkg = *resolve
         .workspace_resolve
         .targeted_resolve
         .sort()
         .last()
-        .unwrap()
-        .clone();
-    let root_package = resolve
+        .unwrap();
+    let root_package = *resolve
         .workspace_resolve
         .targeted_resolve
         .path_to_top(&pkg)
         .last()
         .unwrap()
-        .0
-        .clone();
+        .0;
     let mut packages_to_build = resolve.recursive_deps_including_self(root_package);
 
     dbg!(&root_package);
