@@ -82,7 +82,6 @@ mod tests {
     fn sense_check_recursive_deps() -> anyhow::Result<()> {
         let config = Config::default()?;
 
-        // FIXME: compile cargo in release mode
         let ws = Workspace::new(&Path::new("Cargo.toml").canonicalize()?, &config)?;
         let options = CompileOptions::new(&config, CompileMode::Build)?;
 
@@ -124,7 +123,7 @@ mod tests {
             &options.spec.to_package_id_specs(&ws)?,
             &options.cli_features,
             &target_data,
-            &requested_kinds,
+            requested_kinds,
             package_map,
             &opts,
         )
@@ -132,7 +131,7 @@ mod tests {
         let resolve = QuickResolve {
             ws: &ws,
             workspace_resolve: &workspace_resolve,
-            graph: graph,
+            graph,
         };
 
         assert_eq!(dep_names_for_package(&resolve, "libc"), &["libc"]);
