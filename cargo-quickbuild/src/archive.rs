@@ -9,12 +9,11 @@ use cargo::core::PackageId;
 use filetime::FileTime;
 use tar::{Archive, Builder, Entry, EntryType};
 
-use crate::command;
 use crate::pax::{BuilderExt, PaxBuilder};
 use crate::quick_resolve::QuickResolve;
 use crate::std_ext::ExitStatusExt;
 
-use super::get_tarball_path;
+use super::description::get_tarball_path;
 
 pub fn tar_target_dir(
     scratch_dir_path: std::path::PathBuf,
@@ -67,6 +66,7 @@ pub fn tar_target_dir(
         panic!("Got a timestamp problem. See above logging for details.")
     }
     // actually just nuke this for now and use the one produced by bsd tar
+    // FIXME: stop doing this!
     std::fs::remove_file(temp_tarball_path)?;
     _tar_target_dir(scratch_dir_path, temp_tarball_path)?;
 
@@ -79,7 +79,7 @@ fn _tar_target_dir(
 ) -> Result<()> {
     // FIXME: cargo already bundles tar as a dep, so just use that
     // FIXME: each tarball contains duplicates of all of the dependencies that we just unpacked already
-    command([
+    crate::builder::command([
         "tar",
         "-f",
         &temp_tarball_path.to_string_lossy(),
