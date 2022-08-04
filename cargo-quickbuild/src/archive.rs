@@ -18,7 +18,7 @@ use super::get_tarball_path;
 
 pub fn tar_target_dir(
     scratch_dir_path: std::path::PathBuf,
-    temp_tarball_path: &std::path::PathBuf,
+    temp_tarball_path: &std::path::Path,
     file_timestamps_to_exclude: &BTreeMap<PathBuf, FileTime>,
 ) -> Result<()> {
     // FIXME: each tarball contains duplicates of all of the dependencies that we just unpacked already
@@ -75,7 +75,7 @@ pub fn tar_target_dir(
 
 fn _tar_target_dir(
     scratch_dir: std::path::PathBuf,
-    temp_tarball_path: &std::path::PathBuf,
+    temp_tarball_path: &std::path::Path,
 ) -> Result<()> {
     // FIXME: cargo already bundles tar as a dep, so just use that
     // FIXME: each tarball contains duplicates of all of the dependencies that we just unpacked already

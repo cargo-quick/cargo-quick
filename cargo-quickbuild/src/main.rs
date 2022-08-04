@@ -1,5 +1,4 @@
 mod archive;
-mod deps;
 mod pax;
 mod quick_resolve;
 mod resolve;
@@ -214,8 +213,8 @@ fn get_tarball_path<'cfg, 'a>(
     tarball_dir.join(format!("{package_name}-{package_version}-{digest}.tar"))
 }
 
-fn packages_to_cargo_toml_deps<'cfg, 'a>(
-    resolve: &QuickResolve<'cfg, 'a>,
+fn packages_to_cargo_toml_deps<'cfg>(
+    resolve: &QuickResolve<'cfg, '_>,
     package_id: PackageId,
 ) -> String {
     let mut deps_string = String::new();
