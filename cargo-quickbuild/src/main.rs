@@ -6,8 +6,8 @@ mod resolve;
 mod stats;
 mod std_ext;
 
-use std::collections::HashMap;
 use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write as _;
 use std::fs::remove_dir_all;
 use std::io::Write;
@@ -214,18 +214,32 @@ fn packages_to_cargo_toml_deps<'cfg, 'a>(
         package_id.version()
     )
     .unwrap();
+    let deps = resolve.recursive_deps_including_self(package_id);
+    let build_deps = resolve.recursive_build_deps(package_id);
 
-    resolve.recursive_deps_including_self(package_id).into_iter()
-    .for_each(|package_id| {
+    format!(
+        "# {name} {version}\n\
+        {deps}\n\
+        [build-dependencies]\n\
+        {build_deps}",
+        name = package_id.name(),
+        version = package_id.version(),
+        deps = deps_to_string(resolve, deps),
+        build_deps = deps_to_string(resolve, build_deps)
+    )
+}
+
+fn deps_to_string(resolve: &QuickResolve, deps: BTreeSet<PackageId>) -> String {
+    deps.into_iter()
+    .map(|package_id| {
         let name = package_id.name();
         let version = package_id.version().to_string();
         let features = resolve.workspace_resolve.targeted_resolve.features(package_id);
         let safe_version = version.replace(|c: char| !c.is_alphanumeric(), "_");
-        writeln!(deps_string,
+        format!(
             r#"{name}_{safe_version} = {{ package = "{name}", version = "={version}", features = {features:?}, default-features = false }}"#
-        ).unwrap();
-    });
-    deps_string
+        ) + "\n"
+    }).collect()
 }
 
 // HACK: keep tempdir location fixed to see if that fixes compilation issues.
