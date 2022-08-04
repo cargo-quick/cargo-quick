@@ -10,7 +10,7 @@ use cargo::core::PackageId;
 
 use crate::quick_resolve::QuickResolve;
 
-pub(crate) fn get_tarball_path<'cfg, 'a>(
+pub fn get_tarball_path<'cfg, 'a>(
     resolve: &QuickResolve<'cfg, 'a>,
     tarball_dir: &Path,
     package_id: PackageId,
@@ -26,7 +26,7 @@ pub(crate) fn get_tarball_path<'cfg, 'a>(
     tarball_dir.join(format!("{package_name}-{package_version}-{digest}.tar"))
 }
 
-pub(crate) fn packages_to_cargo_toml_deps<'cfg>(
+pub fn packages_to_cargo_toml_deps<'cfg>(
     resolve: &QuickResolve<'cfg, '_>,
     package_id: PackageId,
 ) -> String {
@@ -53,7 +53,7 @@ pub(crate) fn packages_to_cargo_toml_deps<'cfg>(
     )
 }
 
-pub(crate) fn deps_to_string(resolve: &QuickResolve, deps: BTreeSet<PackageId>) -> String {
+pub fn deps_to_string(resolve: &QuickResolve, deps: BTreeSet<PackageId>) -> String {
     deps.into_iter()
     .map(|package_id| {
         let name = package_id.name();

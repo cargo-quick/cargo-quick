@@ -9,7 +9,7 @@ use crate::description::get_tarball_path;
 use crate::description::packages_to_cargo_toml_deps;
 use crate::quick_resolve::QuickResolve;
 
-pub(crate) fn build_missing_packages(
+pub fn build_missing_packages(
     resolve: QuickResolve,
     tarball_dir: &Path,
     root_package: PackageId,
@@ -60,7 +60,7 @@ pub(crate) fn build_missing_packages(
     Ok(())
 }
 
-pub(crate) fn outstanding_deps<'cfg, 'a>(
+pub fn outstanding_deps<'cfg, 'a>(
     resolve: &QuickResolve<'cfg, 'a>,
     built_packages: &HashSet<PackageId>,
     package_id: PackageId,
@@ -72,7 +72,7 @@ pub(crate) fn outstanding_deps<'cfg, 'a>(
         .collect()
 }
 
-pub(crate) fn build_tarball_if_not_exists<'cfg, 'a>(
+pub fn build_tarball_if_not_exists<'cfg, 'a>(
     resolve: &QuickResolve<'cfg, 'a>,
     tarball_dir: &Path,
     package_id: PackageId,

@@ -19,7 +19,7 @@ use crate::stats::ComputedStats;
 use crate::stats::Stats;
 use crate::std_ext::ExitStatusExt;
 
-pub(crate) fn build_tarball<'cfg, 'a>(
+pub fn build_tarball<'cfg, 'a>(
     resolve: &QuickResolve<'cfg, 'a>,
     tarball_dir: &Path,
     package_id: PackageId,
@@ -65,7 +65,7 @@ pub(crate) fn build_tarball<'cfg, 'a>(
     Ok(())
 }
 
-pub(crate) fn cargo_init(scratch_dir: &std::path::PathBuf) -> Result<()> {
+pub fn cargo_init(scratch_dir: &std::path::PathBuf) -> Result<()> {
     command(["cargo", "init"])
         .arg(scratch_dir)
         .status()?
@@ -74,7 +74,7 @@ pub(crate) fn cargo_init(scratch_dir: &std::path::PathBuf) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn unpack_tarballs_of_deps<'cfg, 'a>(
+pub fn unpack_tarballs_of_deps<'cfg, 'a>(
     resolve: &QuickResolve<'cfg, 'a>,
     tarball_dir: &Path,
     package_id: PackageId,
@@ -98,7 +98,7 @@ pub(crate) fn unpack_tarballs_of_deps<'cfg, 'a>(
     Ok(file_timestamps)
 }
 
-pub(crate) fn add_deps_to_manifest_and_run_cargo_build(
+pub fn add_deps_to_manifest_and_run_cargo_build(
     deps_string: String,
     scratch_dir: &std::path::PathBuf,
 ) -> Result<()> {
@@ -135,7 +135,7 @@ pub(crate) fn add_deps_to_manifest_and_run_cargo_build(
     Ok(())
 }
 
-pub(crate) fn command(args: impl IntoIterator<Item = impl AsRef<OsStr>>) -> Command {
+pub fn command(args: impl IntoIterator<Item = impl AsRef<OsStr>>) -> Command {
     let mut args = args.into_iter();
     let mut command = Command::new(
         args.next()
