@@ -1,17 +1,16 @@
 use std::collections::HashSet;
-use std::path::Path;
 
 use anyhow::Result;
 use cargo::core::PackageId;
 
 use crate::builder::build_tarball;
-use crate::description::get_tarball_path;
-use crate::description::packages_to_cargo_toml_deps;
+use crate::description::PackageDescription;
 use crate::quick_resolve::QuickResolve;
+use crate::repo::Repo;
 
 pub fn build_missing_packages(
     resolve: QuickResolve,
-    tarball_dir: &Path,
+    repo: &Repo,
     root_package: PackageId,
 ) -> Result<(), anyhow::Error> {
     let mut packages_to_build = resolve.recursive_deps_including_self(root_package);
@@ -52,7 +51,7 @@ pub fn build_missing_packages(
                 println!("🎉 We're done here 🎉");
                 return Ok(());
             }
-            build_tarball_if_not_exists(&resolve, tarball_dir, package_id)?;
+            build_tarball_if_not_exists(&resolve, repo, package_id)?;
             built_packages.insert(package_id);
         }
     }
@@ -74,16 +73,16 @@ pub fn outstanding_deps<'cfg, 'a>(
 
 pub fn build_tarball_if_not_exists<'cfg, 'a>(
     resolve: &QuickResolve<'cfg, 'a>,
-    tarball_dir: &Path,
+    repo: &Repo,
     package_id: PackageId,
 ) -> Result<()> {
-    let deps_string = packages_to_cargo_toml_deps(resolve, package_id);
+    let description = PackageDescription::new(resolve, package_id);
+    let package_digest = description.pretty_digest();
 
-    let tarball_path = get_tarball_path(resolve, tarball_dir, package_id);
-    println!("STARTING BUILD\n{tarball_path:?} deps:\n{}", deps_string);
-    if tarball_path.exists() {
-        println!("{tarball_path:?} already exists");
+    if repo.has(&description) {
+        println!("{package_digest:?} already exists",);
         return Ok(());
     }
-    build_tarball(resolve, tarball_dir, package_id)
+    println!("STARTING BUILD\n{package_digest:?}");
+    build_tarball(resolve, repo, package_id)
 }

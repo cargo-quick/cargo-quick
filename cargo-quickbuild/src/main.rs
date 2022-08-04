@@ -3,6 +3,7 @@ mod builder;
 mod description;
 mod pax;
 mod quick_resolve;
+mod repo;
 mod resolve;
 mod scheduler;
 mod stats;
@@ -20,6 +21,7 @@ use cargo::core::{PackageId, Workspace};
 use cargo::ops::tree::{Charset, EdgeKind, Prefix, Target, TreeOptions};
 use cargo::ops::CompileOptions;
 use cargo::Config;
+use repo::Repo;
 
 use crate::quick_resolve::QuickResolve;
 use crate::resolve::create_resolve;
@@ -38,7 +40,7 @@ fn main() -> Result<()> {
         Some(path) => PathBuf::from(path),
         None => home::home_dir().unwrap().join("tmp/quick"),
     };
-    let tarball_dir = &tarball_dir;
+    let repo = Repo::new(tarball_dir);
 
     let config = Config::default()?;
 
@@ -110,5 +112,5 @@ fn main() -> Result<()> {
         .unwrap()
         .0;
 
-    build_missing_packages(resolve, tarball_dir, root_package)
+    build_missing_packages(resolve, &repo, root_package)
 }

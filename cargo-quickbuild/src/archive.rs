@@ -5,28 +5,20 @@ use std::path::Path;
 use std::{collections::BTreeMap, path::PathBuf};
 
 use anyhow::{Context, Ok, Result};
-use cargo::core::PackageId;
+
 use filetime::FileTime;
 use tar::{Archive, Builder, Entry, EntryType};
 
-use crate::description::get_tarball_path;
 use crate::pax::{BuilderExt, PaxBuilder};
-use crate::quick_resolve::QuickResolve;
 
 pub fn tar_target_dir(
     scratch_dir_path: std::path::PathBuf,
-    temp_tarball_path: &std::path::Path,
+    file: File,
     file_timestamps_to_exclude: &BTreeMap<PathBuf, FileTime>,
 ) -> Result<()> {
     // FIXME: each tarball contains duplicates of all of the dependencies that we just unpacked already
     // Either inline whatever append_dir_all() is doing and add filtering, or delete files before making the tarball
-    let mut tar = Builder::new(
-        File::options()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(temp_tarball_path)?,
-    );
+    let mut tar = Builder::new(file);
     let mut problem = false;
     for entry in walkdir::WalkDir::new(scratch_dir_path.join("target")) {
         let entry = entry?;
@@ -84,26 +76,12 @@ fn append_path_with_mtime(
     Ok(())
 }
 
-pub fn untar_target_dir<'cfg, 'a>(
-    resolve: &QuickResolve<'cfg, 'a>,
-    tarball_dir: &Path,
-    package_id: PackageId,
-    scratch_dir: &Path,
-) -> Result<BTreeMap<PathBuf, FileTime>> {
-    let tarball_path = get_tarball_path(resolve, tarball_dir, package_id);
-    assert!(tarball_path.exists(), "{tarball_path:?} does not exist");
-    // FIXME: return BTreeMap<PathBuf, DateTime> or something, by unpacking what Archive::_unpack() does internally
-    let mut archive = Archive::new(File::open(tarball_path)?);
-    let ret = tracked_unpack(&mut archive, scratch_dir)?;
-    Ok(ret)
-}
-
 /// Originally  copy-pasta of tar-rs's private _unpack() method, but returns the list of paths that have been unpacked.
 /// This was originally proposed as https://github.com/alexcrichton/tar-rs/pull/293 but it was determined
 /// that this isn't something that tar-rs should support directly - we should instead use the tools that
 /// tar-rs provides, and implement it ourselves.
 /// TODO: Also include the folder mtime setting code from https://github.com/alexcrichton/tar-rs/pull/217/
-fn tracked_unpack<R: Read>(
+pub fn tracked_unpack<R: Read>(
     archive: &mut Archive<R>,
     dst: &Path,
 ) -> Result<BTreeMap<PathBuf, FileTime>> {

@@ -1,7 +1,5 @@
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
-use std::path::Path;
-use std::path::PathBuf;
 
 use crypto_hash::hex_digest;
 use crypto_hash::Algorithm;
@@ -10,20 +8,27 @@ use cargo::core::PackageId;
 
 use crate::quick_resolve::QuickResolve;
 
-pub fn get_tarball_path<'cfg, 'a>(
-    resolve: &QuickResolve<'cfg, 'a>,
-    tarball_dir: &Path,
+/// A self-contained description of a package build configuration
+pub struct PackageDescription {
     package_id: PackageId,
-) -> PathBuf {
-    let deps_string = packages_to_cargo_toml_deps(resolve, package_id);
+    cargo_toml_deps: String,
+}
 
-    let digest = hex_digest(Algorithm::SHA256, deps_string.as_bytes());
-    let package_name = package_id.name();
-    let package_version = package_id.version();
+impl PackageDescription {
+    pub fn new<'cfg>(resolve: &QuickResolve<'cfg, '_>, package_id: PackageId) -> Self {
+        let cargo_toml_deps = packages_to_cargo_toml_deps(resolve, package_id);
+        Self {
+            package_id,
+            cargo_toml_deps,
+        }
+    }
+    pub fn pretty_digest(&self) -> String {
+        let digest = hex_digest(Algorithm::SHA256, self.cargo_toml_deps.as_bytes());
+        let package_name = self.package_id.name();
+        let package_version = self.package_id.version();
 
-    std::fs::create_dir_all(&tarball_dir).unwrap();
-
-    tarball_dir.join(format!("{package_name}-{package_version}-{digest}.tar"))
+        format!("{package_name}-{package_version}-{digest}")
+    }
 }
 
 pub fn packages_to_cargo_toml_deps<'cfg>(

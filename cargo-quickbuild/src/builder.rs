@@ -8,20 +8,23 @@ use std::process::Command;
 use anyhow::Result;
 use cargo::core::PackageId;
 use filetime::FileTime;
+use tar::Archive;
 use tempdir::TempDir;
 
 use crate::archive::tar_target_dir;
-use crate::archive::untar_target_dir;
-use crate::description::get_tarball_path;
+use crate::archive::tracked_unpack;
+
 use crate::description::packages_to_cargo_toml_deps;
+use crate::description::PackageDescription;
 use crate::quick_resolve::QuickResolve;
-use crate::stats::ComputedStats;
+use crate::repo::Repo;
+
 use crate::stats::Stats;
 use crate::std_ext::ExitStatusExt;
 
 pub fn build_tarball<'cfg, 'a>(
     resolve: &QuickResolve<'cfg, 'a>,
-    tarball_dir: &Path,
+    repo: &Repo,
     package_id: PackageId,
 ) -> Result<()> {
     let tempdir = TempDir::new("cargo-quickbuild-scratchpad")?;
@@ -35,32 +38,19 @@ pub fn build_tarball<'cfg, 'a>(
     cargo_init(&scratch_dir)?;
     stats.init_done();
 
-    let file_timestamps = unpack_tarballs_of_deps(resolve, tarball_dir, package_id, &scratch_dir)?;
+    let file_timestamps = unpack_tarballs_of_deps(resolve, repo, package_id, &scratch_dir)?;
     stats.untar_done();
 
     let deps_string = packages_to_cargo_toml_deps(resolve, package_id);
     add_deps_to_manifest_and_run_cargo_build(deps_string, &scratch_dir)?;
     stats.build_done();
 
-    // We write to a temporary location and then mv because mv is an atomic operation in posix
-    // This has to be on the same filesystem, so we can't put it in the tempdir.
-    let tarball_path = get_tarball_path(resolve, tarball_dir, package_id);
-    let stats_path = tarball_path.with_extension("stats.json");
-
-    let temp_tarball_path = tarball_path.with_extension("temp.tar");
-    let temp_stats_path = temp_tarball_path.with_extension("stats.json");
-
-    tar_target_dir(scratch_dir, &temp_tarball_path, &file_timestamps)?;
+    let description = PackageDescription::new(resolve, package_id);
+    let file = repo.write(&description)?;
+    tar_target_dir(scratch_dir, file, &file_timestamps)?;
     stats.tar_done();
 
-    serde_json::to_writer_pretty(
-        std::fs::File::create(&temp_stats_path)?,
-        &ComputedStats::from(stats),
-    )?;
-
-    std::fs::rename(&temp_stats_path, stats_path)?;
-    std::fs::rename(&temp_tarball_path, &tarball_path)?;
-    println!("wrote to {tarball_path:?}");
+    repo.commit(&description, stats)?;
 
     Ok(())
 }
@@ -76,23 +66,20 @@ pub fn cargo_init(scratch_dir: &std::path::PathBuf) -> Result<()> {
 
 pub fn unpack_tarballs_of_deps<'cfg, 'a>(
     resolve: &QuickResolve<'cfg, 'a>,
-    tarball_dir: &Path,
+    repo: &Repo,
     package_id: PackageId,
     scratch_dir: &Path,
 ) -> Result<BTreeMap<PathBuf, FileTime>> {
     let mut file_timestamps = BTreeMap::default();
-    for dep in resolve
+    for _dep in resolve
         .recursive_deps_including_self(package_id)
         .into_iter()
         .filter(|id| id != &package_id)
     {
+        let description = PackageDescription::new(resolve, package_id);
+        let mut archive = Archive::new(repo.read(&description)?);
         // These should be *guaranteed* to already be built.
-        file_timestamps.append(&mut untar_target_dir(
-            resolve,
-            tarball_dir,
-            dep,
-            scratch_dir,
-        )?);
+        file_timestamps.append(&mut tracked_unpack(&mut archive, scratch_dir)?);
     }
 
     Ok(file_timestamps)
