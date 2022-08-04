@@ -1,0 +1,8 @@
+# curl-sys 0.4.55+curl-7.83.1
+cc_1_0_73 = { package = "cc", version = "=1.0.73", features = ["jobserver", "parallel"], default-features = false }
+curl-sys_0_4_55_curl_7_83_1 = { package = "curl-sys", version = "=0.4.55+curl-7.83.1", features = ["default", "http2", "libnghttp2-sys", "openssl-sys", "ssl"], default-features = false }
+jobserver_0_1_24 = { package = "jobserver", version = "=0.1.24", features = [], default-features = false }
+libc_0_2_125 = { package = "libc", version = "=0.2.125", features = ["default", "std"], default-features = false }
+libnghttp2-sys_0_1_7_1_45_0 = { package = "libnghttp2-sys", version = "=0.1.7+1.45.0", features = [], default-features = false }
+libz-sys_1_1_6 = { package = "libz-sys", version = "=1.1.6", features = ["libc"], default-features = false }
+pkg-config_0_3_25 = { package = "pkg-config", version = "=0.3.25", features = [], default-features = false }
