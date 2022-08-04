@@ -15,7 +15,6 @@ use tempdir::TempDir;
 use crate::archive::tar_target_dir;
 use crate::archive::tracked_unpack;
 
-use crate::description::packages_to_cargo_toml_deps;
 use crate::description::PackageDescription;
 use crate::quick_resolve::QuickResolve;
 use crate::repo::Repo;
@@ -42,8 +41,9 @@ pub fn build_tarball<'cfg, 'a>(
     let file_timestamps = unpack_tarballs_of_deps(resolve, repo, package_id, &scratch_dir)?;
     stats.untar_done();
 
-    let deps_string = packages_to_cargo_toml_deps(resolve, package_id);
-    add_deps_to_manifest_and_run_cargo_build(deps_string, &scratch_dir)?;
+    let description = PackageDescription::new(resolve, package_id);
+
+    add_deps_to_manifest_and_run_cargo_build(description.cargo_toml_deps(), &scratch_dir)?;
     stats.build_done();
 
     let description = PackageDescription::new(resolve, package_id);
@@ -90,7 +90,7 @@ pub fn unpack_tarballs_of_deps<'cfg, 'a>(
 }
 
 pub fn add_deps_to_manifest_and_run_cargo_build(
-    deps_string: String,
+    deps_string: &str,
     scratch_dir: &std::path::PathBuf,
 ) -> Result<()> {
     let cargo_toml_path = scratch_dir.join("Cargo.toml");

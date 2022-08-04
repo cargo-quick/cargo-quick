@@ -29,6 +29,9 @@ impl PackageDescription {
 
         format!("{package_name}-{package_version}-{digest}")
     }
+    pub fn cargo_toml_deps(&self) -> &str {
+        &self.cargo_toml_deps
+    }
 }
 
 impl core::fmt::Debug for PackageDescription {
@@ -40,7 +43,7 @@ impl core::fmt::Debug for PackageDescription {
     }
 }
 
-pub fn packages_to_cargo_toml_deps<'cfg>(
+fn packages_to_cargo_toml_deps<'cfg>(
     resolve: &QuickResolve<'cfg, '_>,
     package_id: PackageId,
 ) -> String {
@@ -67,7 +70,7 @@ pub fn packages_to_cargo_toml_deps<'cfg>(
     )
 }
 
-pub fn deps_to_string(resolve: &QuickResolve, deps: BTreeSet<PackageId>) -> String {
+fn deps_to_string(resolve: &QuickResolve, deps: BTreeSet<PackageId>) -> String {
     deps.into_iter()
     .map(|package_id| {
         let name = package_id.name();
