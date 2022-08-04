@@ -6,8 +6,8 @@ mod resolve;
 mod stats;
 mod std_ext;
 
-use std::collections::HashMap;
 use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write as _;
 use std::fs::remove_dir_all;
 use std::io::Write;
@@ -117,15 +117,22 @@ fn unpack_or_build_packages(tarball_dir: &Path) -> Result<()> {
         graph: graph,
     };
 
-    // let root_package = resolve.sort()[0];
-    let [root_package]: [_; 1] = resolve
+    // FIXME: there has to be a better way to ask cargo for the list of root packages.
+    let pkg = resolve
         .workspace_resolve
         .targeted_resolve
-        .iter()
-        .filter(|id| id.name() == "curl-sys")
-        .collect::<Vec<_>>()
-        .try_into()
-        .unwrap();
+        .sort()
+        .last()
+        .unwrap()
+        .clone();
+    let root_package = resolve
+        .workspace_resolve
+        .targeted_resolve
+        .path_to_top(&pkg)
+        .last()
+        .unwrap()
+        .0
+        .clone();
     let mut packages_to_build = resolve.recursive_deps_including_self(root_package);
 
     dbg!(&root_package);
@@ -134,7 +141,7 @@ fn unpack_or_build_packages(tarball_dir: &Path) -> Result<()> {
 
     let mut built_packages: HashSet<PackageId> = Default::default();
 
-    for level in 0..=7 {
+    for level in 0..=100 {
         println!("START OF LEVEL {level}");
         let current_level;
         (current_level, packages_to_build) = packages_to_build.iter().partition(|package_id| {
@@ -156,7 +163,14 @@ fn unpack_or_build_packages(tarball_dir: &Path) -> Result<()> {
             }
             anyhow::bail!("current_level.is_empty() && !packages_to_build.is_empty()");
         }
-        for package_id in current_level {
+        for package_id in current_level.iter().copied() {
+            if package_id == root_package {
+                // I suspect that I will also need to gracefully skip workspace packages, or something, for mvp
+                assert!(packages_to_build.is_empty());
+                assert_eq!(current_level.len(), 1);
+                println!("🎉 We're done here 🎉");
+                return Ok(());
+            }
             build_tarball_if_not_exists(&resolve, tarball_dir, package_id)?;
             built_packages.insert(package_id);
         }
@@ -214,18 +228,32 @@ fn packages_to_cargo_toml_deps<'cfg, 'a>(
         package_id.version()
     )
     .unwrap();
+    let deps = resolve.recursive_deps_including_self(package_id);
+    let build_deps = resolve.recursive_build_deps(package_id);
 
-    resolve.recursive_deps_including_self(package_id).into_iter()
-    .for_each(|package_id| {
+    format!(
+        "# {name} {version}\n\
+        {deps}\n\
+        [build-dependencies]\n\
+        {build_deps}",
+        name = package_id.name(),
+        version = package_id.version(),
+        deps = deps_to_string(resolve, deps),
+        build_deps = deps_to_string(resolve, build_deps)
+    )
+}
+
+fn deps_to_string(resolve: &QuickResolve, deps: BTreeSet<PackageId>) -> String {
+    deps.into_iter()
+    .map(|package_id| {
         let name = package_id.name();
         let version = package_id.version().to_string();
         let features = resolve.workspace_resolve.targeted_resolve.features(package_id);
         let safe_version = version.replace(|c: char| !c.is_alphanumeric(), "_");
-        writeln!(deps_string,
+        format!(
             r#"{name}_{safe_version} = {{ package = "{name}", version = "={version}", features = {features:?}, default-features = false }}"#
-        ).unwrap();
-    });
-    deps_string
+        ) + "\n"
+    }).collect()
 }
 
 // HACK: keep tempdir location fixed to see if that fixes compilation issues.
