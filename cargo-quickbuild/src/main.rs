@@ -215,7 +215,7 @@ fn packages_to_cargo_toml_deps<'cfg, 'a>(
     )
     .unwrap();
 
-    dbg!(resolve.recursive_deps_including_self(package_id)).into_iter()
+    resolve.recursive_deps_including_self(package_id).into_iter()
     .for_each(|package_id| {
         let name = package_id.name();
         let version = package_id.version().to_string();
