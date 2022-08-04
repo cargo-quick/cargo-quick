@@ -109,8 +109,7 @@ async fn fetch_batch(rust_repos_dir: &str, valid_repo_records: &[RepoRecord]) {
 pub async fn main() -> Result<(), Box<dyn Error>> {
     let rust_repos_dir = get_first_arg()?;
     let rust_repos_dir = rust_repos_dir.to_str().unwrap();
-    let repo_list_csv_path =
-        std::path::Path::new(&rust_repos_dir).join("data/github.csv".to_string());
+    let repo_list_csv_path = std::path::Path::new(&rust_repos_dir).join("data/github.csv");
 
     let csv_file = File::open(repo_list_csv_path)?;
     let mut csv_reader = csv::Reader::from_reader(csv_file);

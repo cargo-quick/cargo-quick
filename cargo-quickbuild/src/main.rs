@@ -1,30 +1,33 @@
 mod archive;
 mod deps;
 mod pax;
+mod quick_resolve;
+mod resolve;
 mod stats;
 mod std_ext;
-mod unit_types;
 
-use std::collections::BTreeMap;
+use std::collections::HashMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fmt::Write as _;
 use std::fs::remove_dir_all;
 use std::io::Write;
-use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::{ffi::OsStr, process::Command};
 
 use anyhow::{Context, Result};
-use cargo::core::compiler::unit_graph::UnitDep;
-use cargo::core::compiler::{CompileMode, Unit, UnitInterner};
-use cargo::core::Workspace;
-use cargo::ops::{create_bcx, CompileOptions};
+use cargo::core::compiler::RustcTargetData;
+use cargo::core::compiler::{CompileMode, UnitInterner};
+use cargo::core::dependency::DepKind;
+use cargo::core::Package;
+use cargo::core::{PackageId, Workspace};
+use cargo::ops::tree::{Charset, EdgeKind, Prefix, Target, TreeOptions};
+use cargo::ops::CompileOptions;
 use cargo::Config;
 use crypto_hash::{hex_digest, Algorithm};
-use deps::UnitGraphExt;
 use filetime::FileTime;
-use itertools::Itertools;
+use quick_resolve::QuickResolve;
 
-use crate::deps::UnitNames;
+use crate::resolve::create_resolve;
 use crate::stats::{ComputedStats, Stats};
 use crate::std_ext::ExitStatusExt;
 
@@ -46,142 +49,183 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+fn outstanding_deps<'cfg, 'a>(
+    resolve: &QuickResolve<'cfg, 'a>,
+    built_packages: &HashSet<PackageId>,
+    package_id: PackageId,
+) -> Vec<PackageId> {
+    resolve
+        .recursive_deps_including_self(package_id)
+        .into_iter()
+        .filter(|dep| dep != &package_id && !built_packages.contains(&dep))
+        .collect()
+}
+
 fn unpack_or_build_packages(tarball_dir: &Path) -> Result<()> {
     let config = Config::default()?;
 
     // FIXME: compile cargo in release mode
     let ws = Workspace::new(&Path::new("Cargo.toml").canonicalize()?, &config)?;
     let options = CompileOptions::new(&config, CompileMode::Build)?;
+
     let interner = UnitInterner::new();
-    let bcx = create_bcx(&ws, &options, &interner)?;
-
-    let mut units: Vec<(&Unit, &Vec<UnitDep>)> = bcx
-        .unit_graph
-        .iter()
-        // HACK: only build curl-sys + deps, to repo an issue more quickly
-        .filter(|(unit, _)| {
-            bcx.unit_graph
-                .filter_by_name("curl-sys")
-                .any(|curl| bcx.unit_graph.has_dependency(curl, unit))
-        })
+    let workspace_resolve = create_resolve(&ws, &options, &interner)?;
+    let requested_kinds = &options.build_config.requested_kinds;
+    let target_data = RustcTargetData::new(&ws, requested_kinds)?;
+    let package_map: HashMap<PackageId, &Package> = workspace_resolve
+        .pkg_set
+        .packages()
+        .map(|pkg| (pkg.package_id(), pkg))
         .collect();
-    units.sort_unstable();
 
-    dbg!(units.unit_names());
+    let opts = TreeOptions {
+        cli_features: options.cli_features.clone(),
+        packages: options.spec.clone(),
+        target: Target::Host,
+        edge_kinds: [
+            EdgeKind::Dep(DepKind::Normal),
+            EdgeKind::Dep(DepKind::Build),
+        ]
+        .into_iter()
+        .collect(),
+        invert: Default::default(),
+        pkgs_to_prune: Default::default(),
+        prefix: Prefix::None,
+        no_dedupe: Default::default(),
+        duplicates: Default::default(),
+        charset: Charset::Ascii,
+        format: Default::default(),
+        graph_features: Default::default(),
+        max_display_depth: Default::default(),
+        no_proc_macro: Default::default(),
+    };
+    let graph = cargo::ops::tree::graph::build(
+        &ws,
+        &workspace_resolve.targeted_resolve,
+        &workspace_resolve.resolved_features,
+        &options.spec.to_package_id_specs(&ws)?,
+        &options.cli_features,
+        &target_data,
+        &requested_kinds,
+        package_map,
+        &opts,
+    )
+    .unwrap();
+    let resolve = QuickResolve {
+        ws: &ws,
+        workspace_resolve: &workspace_resolve,
+        graph: graph,
+    };
 
-    let mut computed_deps = BTreeMap::<&Unit, &Vec<UnitDep>>::default();
+    // let root_package = resolve.sort()[0];
+    let [root_package]: [_; 1] = resolve
+        .workspace_resolve
+        .targeted_resolve
+        .iter()
+        .filter(|id| id.name() == "curl-sys")
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
+    let mut packages_to_build = resolve.recursive_deps_including_self(root_package);
+
+    dbg!(&root_package);
+    dbg!(&packages_to_build);
+    assert!(packages_to_build.contains(&root_package));
+
+    let mut built_packages: HashSet<PackageId> = Default::default();
 
     for level in 0..=7 {
         println!("START OF LEVEL {level}");
         let current_level;
-        // libs with no lib unbuilt deps and no build.rs
-        (current_level, units) = units.iter().partition(|(_unit, deps)| {
-            deps.iter().all(|dep| computed_deps.contains_key(&dep.unit))
+        (current_level, packages_to_build) = packages_to_build.iter().partition(|package_id| {
+            outstanding_deps(&resolve, &built_packages, **package_id).is_empty()
         });
 
-        dbg!(current_level.unit_names_and_deps());
+        dbg!(&current_level);
 
-        if current_level.is_empty() && !units.is_empty() {
+        if current_level.is_empty() && !packages_to_build.is_empty() {
             println!(
-                "We haven't compiled everything yet, but there is nothing left to do\n\n {units:#?}"
+                "We haven't compiled everything yet, but there is nothing left to do\n\npackages_to_build: {packages_to_build:#?}"
             );
-            anyhow::bail!("current_level.is_empty() && !units.is_empty()");
+            dbg!(&built_packages);
+            for package_id in packages_to_build {
+                dbg!((
+                    package_id,
+                    outstanding_deps(&resolve, &built_packages, package_id)
+                ));
+            }
+            anyhow::bail!("current_level.is_empty() && !packages_to_build.is_empty()");
         }
-        for (unit, deps) in current_level {
-            computed_deps.insert(unit, deps);
-            build_tarball_if_not_exists(tarball_dir, &computed_deps, unit)?;
+        for package_id in current_level {
+            build_tarball_if_not_exists(&resolve, tarball_dir, package_id)?;
+            built_packages.insert(package_id);
         }
     }
 
     Ok(())
 }
 
-fn build_tarball_if_not_exists(
+fn build_tarball_if_not_exists<'cfg, 'a>(
+    resolve: &QuickResolve<'cfg, 'a>,
     tarball_dir: &Path,
-    computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>,
-    unit: &Unit,
+    package_id: PackageId,
 ) -> Result<()> {
-    if !unit.target.is_lib() {
-        log::info!("skipping {unit:?} for now, because it is not a lib");
-        return Ok(());
-    }
-    let deps_string = units_to_cargo_toml_deps(computed_deps, unit);
+    // if !package_id.target.is_lib() {
+    //     log::info!("skipping {unit:?} for now, because it is not a lib");
+    //     return Ok(());
+    // }
+    let deps_string = packages_to_cargo_toml_deps(resolve, package_id);
 
-    let tarball_path = get_tarball_path(tarball_dir, computed_deps, unit);
+    let tarball_path = get_tarball_path(resolve, tarball_dir, package_id);
     println!("STARTING BUILD\n{tarball_path:?} deps:\n{}", deps_string);
     if tarball_path.exists() {
         println!("{tarball_path:?} already exists");
         return Ok(());
     }
-    build_tarball(tarball_dir, computed_deps, unit)
+    build_tarball(resolve, tarball_dir, package_id)
 }
 
 // FIXME: put a cache on this?
-fn get_tarball_path(
+fn get_tarball_path<'cfg, 'a>(
+    resolve: &QuickResolve<'cfg, 'a>,
     tarball_dir: &Path,
-    computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>,
-    unit: &Unit,
+    package_id: PackageId,
 ) -> PathBuf {
-    let deps_string = units_to_cargo_toml_deps(computed_deps, unit);
+    let deps_string = packages_to_cargo_toml_deps(resolve, package_id);
 
     let digest = hex_digest(Algorithm::SHA256, deps_string.as_bytes());
-    let package_name = unit.deref().pkg.name();
-    let package_version = unit.deref().pkg.version();
+    let package_name = package_id.name();
+    let package_version = package_id.version();
 
     std::fs::create_dir_all(&tarball_dir).unwrap();
 
     tarball_dir.join(format!("{package_name}-{package_version}-{digest}.tar"))
 }
 
-fn units_to_cargo_toml_deps(computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>, unit: &Unit) -> String {
+fn packages_to_cargo_toml_deps<'cfg, 'a>(
+    resolve: &QuickResolve<'cfg, 'a>,
+    package_id: PackageId,
+) -> String {
     let mut deps_string = String::new();
     writeln!(
         deps_string,
         "# {} {}",
-        unit.deref().pkg.name(),
-        unit.deref().pkg.version().to_string()
+        package_id.name(),
+        package_id.version()
     )
     .unwrap();
-    std::iter::once(unit).chain(
-        flatten_deps(computed_deps, unit)
-    )
-    .sorted()
-    .unique()
-    .for_each(|unit| {
-        let package = &unit.deref().pkg;
-        let name = package.name();
-        let version = package.version().to_string();
-        let features = &unit.deref().features;
+
+    resolve.recursive_deps_including_self(package_id).into_iter()
+    .for_each(|package_id| {
+        let name = package_id.name();
+        let version = package_id.version().to_string();
+        let features = resolve.workspace_resolve.targeted_resolve.features(package_id);
         let safe_version = version.replace(|c: char| !c.is_alphanumeric(), "_");
         writeln!(deps_string,
             r#"{name}_{safe_version} = {{ package = "{name}", version = "={version}", features = {features:?}, default-features = false }}"#
         ).unwrap();
     });
     deps_string
-}
-
-fn flatten_deps<'a>(
-    computed_deps: &'a BTreeMap<&Unit, &Vec<UnitDep>>,
-    unit: &'a Unit,
-) -> Box<dyn Iterator<Item = &'a Unit> + 'a> {
-    if !unit.target.is_lib() {
-        return Box::new(std::iter::empty());
-    }
-    Box::new(
-        (&*computed_deps.get(unit).unwrap())
-            .iter()
-            .map(|dep| &dep.unit)
-            .filter(|dep| dep.target.is_lib() || (dep.pkg.name() == "cc" && panic!("{dep:?}")))
-            .flat_map(move |dep| {
-                assert!(dep.target.is_lib());
-                assert_ne!(dep, unit);
-                assert_ne!(
-                    dep.pkg, unit.pkg,
-                    "package clash between:\n{dep:?}\nand\n{unit:?}"
-                );
-                std::iter::once(dep).chain(flatten_deps(computed_deps, dep))
-            }),
-    )
 }
 
 // HACK: keep tempdir location fixed to see if that fixes compilation issues.
@@ -204,10 +248,10 @@ impl Drop for FixedTempDir {
     }
 }
 
-fn build_tarball(
+fn build_tarball<'cfg, 'a>(
+    resolve: &QuickResolve<'cfg, 'a>,
     tarball_dir: &Path,
-    computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>,
-    unit: &Unit,
+    package_id: PackageId,
 ) -> Result<()> {
     let tempdir = FixedTempDir::new("cargo-quickbuild-scratchpad")?;
     let scratch_dir = tempdir.path.join("cargo-quickbuild-scratchpad");
@@ -220,10 +264,10 @@ fn build_tarball(
     cargo_init(&scratch_dir)?;
     stats.init_done();
 
-    let file_timestamps = unpack_tarballs_of_deps(tarball_dir, computed_deps, unit, &scratch_dir)?;
+    let file_timestamps = unpack_tarballs_of_deps(resolve, tarball_dir, package_id, &scratch_dir)?;
     stats.untar_done();
 
-    let deps_string = units_to_cargo_toml_deps(computed_deps, unit);
+    let deps_string = packages_to_cargo_toml_deps(resolve, package_id);
     add_deps_to_manifest_and_run_cargo_build(deps_string, &scratch_dir)?;
     stats.build_done();
 
@@ -239,7 +283,7 @@ fn build_tarball(
         &ComputedStats::from(stats),
     )?;
 
-    let tarball_path = get_tarball_path(tarball_dir, computed_deps, unit);
+    let tarball_path = get_tarball_path(resolve, tarball_dir, package_id);
     std::fs::rename(&temp_stats_path, tarball_path.with_extension("stats.json"))?;
     std::fs::rename(&temp_tarball_path, &tarball_path)?;
     println!("wrote to {tarball_path:?}");
@@ -256,19 +300,23 @@ fn cargo_init(scratch_dir: &std::path::PathBuf) -> Result<()> {
     Ok(())
 }
 
-fn unpack_tarballs_of_deps(
+fn unpack_tarballs_of_deps<'cfg, 'a>(
+    resolve: &QuickResolve<'cfg, 'a>,
     tarball_dir: &Path,
-    computed_deps: &BTreeMap<&Unit, &Vec<UnitDep>>,
-    unit: &Unit,
+    package_id: PackageId,
     scratch_dir: &Path,
 ) -> Result<BTreeMap<PathBuf, FileTime>> {
     let mut file_timestamps = BTreeMap::default();
-    for dep in flatten_deps(computed_deps, unit).sorted().unique() {
+    for dep in resolve
+        .recursive_deps_including_self(package_id)
+        .into_iter()
+        .filter(|id| id != &package_id)
+    {
         // These should be *guaranteed* to already be built.
         file_timestamps.append(&mut archive::untar_target_dir(
+            resolve,
             tarball_dir,
-            computed_deps,
-            &dep,
+            dep,
             scratch_dir,
         )?);
     }
@@ -289,10 +337,10 @@ fn add_deps_to_manifest_and_run_cargo_build(
     cargo_toml.flush()?;
     drop(cargo_toml);
 
-    command(["cargo", "tree", "-vv"])
-        .current_dir(scratch_dir)
-        .status()?
-        .exit_ok_ext()?;
+    // command(["cargo", "tree", "-vv", "--no-dedupe", "--edges=all"])
+    //     .current_dir(scratch_dir)
+    //     .status()?
+    //     .exit_ok_ext()?;
 
     command(["cargo", "build", "--jobs=1", "--offline"])
         .current_dir(scratch_dir)

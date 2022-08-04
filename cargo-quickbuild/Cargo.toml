@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.57"
-cargo = "0.61.1"
+cargo = { version = "0.61.1", git = "https://github.com/alsuren/cargo", branch = "quickbuild-hacks" }
 crypto-hash = "0.3.4"
 filetime = "0.2.16"
 home = "0.5.3"

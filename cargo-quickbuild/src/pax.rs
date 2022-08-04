@@ -19,7 +19,7 @@ impl PaxBuilder {
             max_len *= 10;
         }
         let len = rest_len + len_len;
-        write!(&mut self.data, "{} {}={}\n", len, key, value).unwrap();
+        writeln!(&mut self.data, "{} {}={}", len, key, value).unwrap();
     }
 
     fn as_bytes(&self) -> &[u8] {

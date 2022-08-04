@@ -102,8 +102,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let rust_repos_dir = get_first_arg()?;
     let rust_repos_dir = rust_repos_dir.to_str().unwrap();
 
-    let repo_list_csv_path =
-        std::path::Path::new(&rust_repos_dir).join("data/github.csv".to_string());
+    let repo_list_csv_path = std::path::Path::new(&rust_repos_dir).join("data/github.csv");
     let output_csv_filename = format!("{}/data/subtrees.csv", rust_repos_dir);
 
     let csv_file = File::open(repo_list_csv_path)?;
@@ -121,7 +120,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         track_progress(&mut progress, &repo_record.name);
 
-        write_all(&mut writer, &rust_repos_dir, &repo_record.name)
+        write_all(&mut writer, rust_repos_dir, &repo_record.name)
             .unwrap_or_else(|error| eprintln!("Error in {:?}: {:#?}", repo_record.name, error));
     }
 
@@ -144,12 +143,10 @@ mod test {
     }
 
     fn get_package_index(graph: &Graph, dependency_name: &str) -> NodeIndex {
-        let node_index = graph
+        graph
             .node_indices()
             .find(|node_index| graph[*node_index].name.as_str() == dependency_name)
-            .unwrap();
-
-        node_index.clone()
+            .unwrap()
     }
 
     #[test]
