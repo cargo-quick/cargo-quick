@@ -11,6 +11,7 @@ pub struct Repo {
 
 impl Repo {
     pub fn new(tarball_dir: PathBuf) -> Self {
+        std::fs::create_dir_all(&tarball_dir).unwrap();
         Self { tarball_dir }
     }
 
