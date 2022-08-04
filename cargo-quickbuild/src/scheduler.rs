@@ -4,6 +4,7 @@ use std::path::Path;
 use anyhow::Result;
 use cargo::core::PackageId;
 
+use crate::builder::build_tarball;
 use crate::description::get_tarball_path;
 use crate::description::packages_to_cargo_toml_deps;
 use crate::quick_resolve::QuickResolve;
@@ -84,5 +85,5 @@ pub(crate) fn build_tarball_if_not_exists<'cfg, 'a>(
         println!("{tarball_path:?} already exists");
         return Ok(());
     }
-    crate::builder::build_tarball(resolve, tarball_dir, package_id)
+    build_tarball(resolve, tarball_dir, package_id)
 }

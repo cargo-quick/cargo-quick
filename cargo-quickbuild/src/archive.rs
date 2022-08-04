@@ -9,11 +9,11 @@ use cargo::core::PackageId;
 use filetime::FileTime;
 use tar::{Archive, Builder, Entry, EntryType};
 
+use crate::builder::command;
+use crate::description::get_tarball_path;
 use crate::pax::{BuilderExt, PaxBuilder};
 use crate::quick_resolve::QuickResolve;
 use crate::std_ext::ExitStatusExt;
-
-use super::description::get_tarball_path;
 
 pub fn tar_target_dir(
     scratch_dir_path: std::path::PathBuf,
@@ -79,7 +79,7 @@ fn _tar_target_dir(
 ) -> Result<()> {
     // FIXME: cargo already bundles tar as a dep, so just use that
     // FIXME: each tarball contains duplicates of all of the dependencies that we just unpacked already
-    crate::builder::command([
+    command([
         "tar",
         "-f",
         &temp_tarball_path.to_string_lossy(),

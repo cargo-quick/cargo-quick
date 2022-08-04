@@ -9,7 +9,6 @@ mod stats;
 mod std_ext;
 
 use std::collections::HashMap;
-
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
@@ -24,6 +23,7 @@ use cargo::Config;
 
 use crate::quick_resolve::QuickResolve;
 use crate::resolve::create_resolve;
+use crate::scheduler::build_missing_packages;
 
 fn main() -> Result<()> {
     pretty_env_logger::init();
@@ -110,5 +110,5 @@ fn main() -> Result<()> {
         .unwrap()
         .0;
 
-    scheduler::build_missing_packages(resolve, tarball_dir, root_package)
+    build_missing_packages(resolve, tarball_dir, root_package)
 }

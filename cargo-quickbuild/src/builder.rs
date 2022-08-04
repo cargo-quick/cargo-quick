@@ -10,6 +10,10 @@ use cargo::core::PackageId;
 use filetime::FileTime;
 use tempdir::TempDir;
 
+use crate::archive::tar_target_dir;
+use crate::archive::untar_target_dir;
+use crate::description::get_tarball_path;
+use crate::description::packages_to_cargo_toml_deps;
 use crate::quick_resolve::QuickResolve;
 use crate::stats::ComputedStats;
 use crate::stats::Stats;
@@ -34,19 +38,19 @@ pub(crate) fn build_tarball<'cfg, 'a>(
     let file_timestamps = unpack_tarballs_of_deps(resolve, tarball_dir, package_id, &scratch_dir)?;
     stats.untar_done();
 
-    let deps_string = crate::description::packages_to_cargo_toml_deps(resolve, package_id);
+    let deps_string = packages_to_cargo_toml_deps(resolve, package_id);
     add_deps_to_manifest_and_run_cargo_build(deps_string, &scratch_dir)?;
     stats.build_done();
 
     // We write to a temporary location and then mv because mv is an atomic operation in posix
     // This has to be on the same filesystem, so we can't put it in the tempdir.
-    let tarball_path = crate::description::get_tarball_path(resolve, tarball_dir, package_id);
+    let tarball_path = get_tarball_path(resolve, tarball_dir, package_id);
     let stats_path = tarball_path.with_extension("stats.json");
 
     let temp_tarball_path = tarball_path.with_extension("temp.tar");
     let temp_stats_path = temp_tarball_path.with_extension("stats.json");
 
-    crate::archive::tar_target_dir(scratch_dir, &temp_tarball_path, &file_timestamps)?;
+    tar_target_dir(scratch_dir, &temp_tarball_path, &file_timestamps)?;
     stats.tar_done();
 
     serde_json::to_writer_pretty(
@@ -83,7 +87,7 @@ pub(crate) fn unpack_tarballs_of_deps<'cfg, 'a>(
         .filter(|id| id != &package_id)
     {
         // These should be *guaranteed* to already be built.
-        file_timestamps.append(&mut crate::archive::untar_target_dir(
+        file_timestamps.append(&mut untar_target_dir(
             resolve,
             tarball_dir,
             dep,
