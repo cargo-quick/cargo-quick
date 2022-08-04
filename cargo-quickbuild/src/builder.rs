@@ -42,8 +42,9 @@ pub fn build_tarball<'cfg, 'a>(
     stats.untar_done();
 
     let description = PackageDescription::new(resolve, package_id);
+    add_deps_to_manifest(&scratch_dir, &description)?;
 
-    add_deps_to_manifest_and_run_cargo_build(description.cargo_toml_deps(), &scratch_dir)?;
+    run_cargo_build(&scratch_dir)?;
     stats.build_done();
 
     let description = PackageDescription::new(resolve, package_id);
@@ -89,19 +90,22 @@ pub fn unpack_tarballs_of_deps<'cfg, 'a>(
     Ok(file_timestamps)
 }
 
-pub fn add_deps_to_manifest_and_run_cargo_build(
-    deps_string: &str,
-    scratch_dir: &std::path::PathBuf,
-) -> Result<()> {
+fn add_deps_to_manifest(
+    scratch_dir: &PathBuf,
+    description: &PackageDescription,
+) -> Result<(), anyhow::Error> {
     let cargo_toml_path = scratch_dir.join("Cargo.toml");
     let mut cargo_toml = std::fs::OpenOptions::new()
         .write(true)
         .append(true)
         .open(&cargo_toml_path)?;
-    write!(cargo_toml, "{}", deps_string)?;
+    write!(cargo_toml, "{}", description.cargo_toml_deps())?;
     cargo_toml.flush()?;
     drop(cargo_toml);
+    Ok(())
+}
 
+pub fn run_cargo_build(scratch_dir: &std::path::PathBuf) -> Result<()> {
     // command(["cargo", "tree", "-vv", "--no-dedupe", "--edges=all"])
     //     .current_dir(scratch_dir)
     //     .status()?
