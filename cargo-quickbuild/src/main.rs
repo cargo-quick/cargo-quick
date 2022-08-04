@@ -186,10 +186,6 @@ fn build_tarball_if_not_exists<'cfg, 'a>(
     tarball_dir: &Path,
     package_id: PackageId,
 ) -> Result<()> {
-    // if !package_id.target.is_lib() {
-    //     log::info!("skipping {unit:?} for now, because it is not a lib");
-    //     return Ok(());
-    // }
     let deps_string = packages_to_cargo_toml_deps(resolve, package_id);
 
     let tarball_path = get_tarball_path(resolve, tarball_dir, package_id);
@@ -201,7 +197,6 @@ fn build_tarball_if_not_exists<'cfg, 'a>(
     build_tarball(resolve, tarball_dir, package_id)
 }
 
-// FIXME: put a cache on this?
 fn get_tarball_path<'cfg, 'a>(
     resolve: &QuickResolve<'cfg, 'a>,
     tarball_dir: &Path,
