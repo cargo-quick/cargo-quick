@@ -31,6 +31,15 @@ impl PackageDescription {
     }
 }
 
+impl core::fmt::Debug for PackageDescription {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PackageDescription")
+            .field("package_id", &self.package_id)
+            .field("pretty_digest", &self.pretty_digest())
+            .finish()
+    }
+}
+
 pub fn packages_to_cargo_toml_deps<'cfg>(
     resolve: &QuickResolve<'cfg, '_>,
     package_id: PackageId,

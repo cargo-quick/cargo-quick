@@ -5,6 +5,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 
+use anyhow::Context;
 use anyhow::Result;
 use cargo::core::PackageId;
 use filetime::FileTime;
@@ -71,13 +72,16 @@ pub fn unpack_tarballs_of_deps<'cfg, 'a>(
     scratch_dir: &Path,
 ) -> Result<BTreeMap<PathBuf, FileTime>> {
     let mut file_timestamps = BTreeMap::default();
-    for _dep in resolve
+    for dep in resolve
         .recursive_deps_including_self(package_id)
         .into_iter()
         .filter(|id| id != &package_id)
     {
-        let description = PackageDescription::new(resolve, package_id);
-        let mut archive = Archive::new(repo.read(&description)?);
+        let description = PackageDescription::new(resolve, dep);
+        let file = repo
+            .read(&description)
+            .with_context(|| format!("reading description {description:?} for {package_id:?}"))?;
+        let mut archive = Archive::new(file);
         // These should be *guaranteed* to already be built.
         file_timestamps.append(&mut tracked_unpack(&mut archive, scratch_dir)?);
     }
