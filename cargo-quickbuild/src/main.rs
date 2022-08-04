@@ -9,8 +9,8 @@ mod std_ext;
 use std::collections::HashMap;
 use std::collections::{BTreeMap, HashSet};
 use std::fmt::Write as _;
-use std::fs::{remove_dir_all, File};
-use std::io::{Read, Write};
+use std::fs::remove_dir_all;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::{ffi::OsStr, process::Command};
 
@@ -128,8 +128,8 @@ fn unpack_or_build_packages(tarball_dir: &Path) -> Result<()> {
         .unwrap();
     let mut packages_to_build = resolve.recursive_deps_including_self(root_package);
 
-    // dbg!(&root_package);
-    // dbg!(&packages_to_build);
+    dbg!(&root_package);
+    dbg!(&packages_to_build);
     assert!(packages_to_build.contains(&root_package));
 
     let mut built_packages: HashSet<PackageId> = Default::default();
@@ -177,11 +177,11 @@ fn build_tarball_if_not_exists<'cfg, 'a>(
     let deps_string = packages_to_cargo_toml_deps(resolve, package_id);
 
     let tarball_path = get_tarball_path(resolve, tarball_dir, package_id);
+    println!("STARTING BUILD\n{tarball_path:?} deps:\n{}", deps_string);
     if tarball_path.exists() {
         println!("{tarball_path:?} already exists");
         return Ok(());
     }
-    println!("STARTING BUILD\n{tarball_path:?} deps:\n{}", deps_string);
     build_tarball(resolve, tarball_dir, package_id)
 }
 
@@ -206,28 +206,6 @@ fn packages_to_cargo_toml_deps<'cfg, 'a>(
     resolve: &QuickResolve<'cfg, 'a>,
     package_id: PackageId,
 ) -> String {
-    let deps_string = _packages_to_cargo_toml_deps(resolve, package_id);
-    let override_path = PathBuf::from(
-        package_id.name().to_string()
-            + "--"
-            + &hex_digest(Algorithm::SHA256, deps_string.as_bytes()),
-    )
-    .with_extension("toml");
-    if override_path.exists() {
-        let mut buf = String::new();
-        File::open(override_path)
-            .unwrap()
-            .read_to_string(&mut buf)
-            .unwrap();
-        buf
-    } else {
-        let mut file = File::create(&override_path).unwrap();
-        file.write_all(deps_string.as_bytes()).unwrap();
-        deps_string
-    }
-}
-
-fn _packages_to_cargo_toml_deps(resolve: &QuickResolve, package_id: PackageId) -> String {
     let mut deps_string = String::new();
     writeln!(
         deps_string,
@@ -236,6 +214,7 @@ fn _packages_to_cargo_toml_deps(resolve: &QuickResolve, package_id: PackageId) -
         package_id.version()
     )
     .unwrap();
+
     resolve.recursive_deps_including_self(package_id).into_iter()
     .for_each(|package_id| {
         let name = package_id.name();

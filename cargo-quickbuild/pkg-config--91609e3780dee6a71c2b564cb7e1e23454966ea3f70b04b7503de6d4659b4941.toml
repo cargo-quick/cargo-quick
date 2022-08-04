@@ -1,2 +1,0 @@
-# pkg-config 0.3.25
-pkg-config_0_3_25 = { package = "pkg-config", version = "=0.3.25", features = [], default-features = false }

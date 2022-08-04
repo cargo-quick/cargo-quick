@@ -1,2 +1,0 @@
-# libc 0.2.125
-libc_0_2_125 = { package = "libc", version = "=0.2.125", features = ["default", "std"], default-features = false }
