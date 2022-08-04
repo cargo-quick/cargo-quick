@@ -21,15 +21,31 @@ impl Stats {
     }
     pub fn init_done(&mut self) {
         self.init_done.replace(Instant::now());
+        log::info!("init_duration: {:?}s", self.init_duration().as_secs_f64());
+    }
+    fn init_duration(&self) -> Duration {
+        self.init_done.unwrap() - self.start
     }
     pub fn untar_done(&mut self) {
         self.untar_done.replace(Instant::now());
+        log::info!("untar_duration: {:?}s", self.untar_duration().as_secs_f64());
+    }
+    fn untar_duration(&self) -> Duration {
+        self.untar_done.unwrap() - self.init_done.unwrap()
     }
     pub fn build_done(&mut self) {
         self.build_done.replace(Instant::now());
+        log::info!("build_duration: {:?}s", self.build_duration().as_secs_f64());
+    }
+    fn build_duration(&self) -> Duration {
+        self.build_done.unwrap() - self.untar_done.unwrap()
     }
     pub fn tar_done(&mut self) {
         self.tar_done.replace(Instant::now());
+        log::info!("tar_duration: {:?}s", self.tar_duration().as_secs_f64());
+    }
+    fn tar_duration(&self) -> Duration {
+        self.tar_done.unwrap() - self.build_done.unwrap()
     }
 }
 
@@ -61,10 +77,10 @@ pub struct ComputedStats {
 impl From<Stats> for ComputedStats {
     fn from(stats: Stats) -> Self {
         Self {
-            init_duration: stats.init_done.unwrap() - stats.start,
-            untar_duration: stats.untar_done.unwrap() - stats.init_done.unwrap(),
-            build_duration: stats.build_done.unwrap() - stats.untar_done.unwrap(),
-            tar_duration: stats.tar_done.unwrap() - stats.build_done.unwrap(),
+            init_duration: stats.init_duration(),
+            untar_duration: stats.untar_duration(),
+            build_duration: stats.build_duration(),
+            tar_duration: stats.tar_duration(),
         }
     }
 }
