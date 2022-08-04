@@ -43,24 +43,8 @@ fn main() -> Result<()> {
         Some(path) => PathBuf::from(path),
         None => home::home_dir().unwrap().join("tmp/quick"),
     };
+    let tarball_dir = &tarball_dir;
 
-    unpack_or_build_packages(&tarball_dir)?;
-    Ok(())
-}
-
-fn outstanding_deps<'cfg, 'a>(
-    resolve: &QuickResolve<'cfg, 'a>,
-    built_packages: &HashSet<PackageId>,
-    package_id: PackageId,
-) -> Vec<PackageId> {
-    resolve
-        .recursive_deps_including_self(package_id)
-        .into_iter()
-        .filter(|dep| dep != &package_id && !built_packages.contains(dep))
-        .collect()
-}
-
-fn unpack_or_build_packages(tarball_dir: &Path) -> Result<()> {
     let config = Config::default()?;
 
     // FIXME: compile cargo in release mode
@@ -130,10 +114,19 @@ fn unpack_or_build_packages(tarball_dir: &Path) -> Result<()> {
         .last()
         .unwrap()
         .0;
+
+    build_missing_packages(resolve, tarball_dir, root_package)
+}
+
+fn build_missing_packages(
+    resolve: QuickResolve,
+    tarball_dir: &Path,
+    root_package: PackageId,
+) -> Result<(), anyhow::Error> {
     let mut packages_to_build = resolve.recursive_deps_including_self(root_package);
 
-    dbg!(&root_package);
-    dbg!(&packages_to_build);
+    // dbg!(&root_package);
+    // dbg!(&packages_to_build);
     assert!(packages_to_build.contains(&root_package));
 
     let mut built_packages: HashSet<PackageId> = Default::default();
@@ -174,6 +167,18 @@ fn unpack_or_build_packages(tarball_dir: &Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn outstanding_deps<'cfg, 'a>(
+    resolve: &QuickResolve<'cfg, 'a>,
+    built_packages: &HashSet<PackageId>,
+    package_id: PackageId,
+) -> Vec<PackageId> {
+    resolve
+        .recursive_deps_including_self(package_id)
+        .into_iter()
+        .filter(|dep| dep != &package_id && !built_packages.contains(dep))
+        .collect()
 }
 
 fn build_tarball_if_not_exists<'cfg, 'a>(
