@@ -72,9 +72,10 @@ mod tests {
 
     use cargo::core::compiler::RustcTargetData;
     use cargo::core::Package;
-    use cargo::ops::tree::{Charset, Prefix, Target, TreeOptions};
     use cargo::util::interning::InternedString;
     use itertools::Itertools;
+
+    use crate::vendor::tree::{Charset, Prefix, Target, TreeOptions};
 
     use super::super::*;
     use super::*;
@@ -117,7 +118,7 @@ mod tests {
             max_display_depth: Default::default(),
             no_proc_macro: Default::default(),
         };
-        let graph = cargo::ops::tree::graph::build(
+        let graph = crate::vendor::tree::graph::build(
             &ws,
             &workspace_resolve.targeted_resolve,
             &workspace_resolve.resolved_features,

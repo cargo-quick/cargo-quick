@@ -1,15 +1,10 @@
 //! Implementation of `cargo tree`.
 
-use anyhow::Context;
-use cargo::core::compiler::{CompileKind, RustcTargetData};
-use cargo::core::dependency::DepKind;
-use cargo::core::resolver::{features::CliFeatures, ForceAllTargets, HasDevUnits};
-use cargo::core::{Package, PackageId, PackageIdSpec, Workspace};
-use cargo::ops::{self, Packages};
-use cargo::util::{CargoResult, Config};
-use cargo::{drop_print, drop_println};
-use graph::Graph;
-use std::collections::{HashMap, HashSet};
+use cargo::core::resolver::features::CliFeatures;
+
+use cargo::ops::Packages;
+
+use std::collections::HashSet;
 use std::str::FromStr;
 
 pub mod graph;
@@ -52,18 +47,8 @@ pub struct TreeOptions {
 #[derive(PartialEq)]
 pub enum Target {
     Host,
-    Specific(Vec<String>),
+    // Specific(Vec<String>),
     All,
-}
-
-impl Target {
-    pub fn from_cli(targets: Vec<String>) -> Target {
-        match targets.len() {
-            0 => Target::Host,
-            1 if targets[0] == "all" => Target::All,
-            _ => Target::Specific(targets),
-        }
-    }
 }
 
 pub enum Charset {

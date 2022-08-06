@@ -119,16 +119,6 @@ impl<'a> Graph<'a> {
         }
     }
 
-    /// Returns `true` if the given node has any outgoing edges.
-    pub fn has_outgoing_edges(&self, index: usize) -> bool {
-        !self.edges[index].0.is_empty()
-    }
-
-    /// Gets a node by index.
-    pub fn node(&self, index: usize) -> &Node {
-        &self.nodes[index]
-    }
-
     /// Given a slice of PackageIds, returns the indexes of all nodes that match.
     pub fn indexes_from_ids(&self, package_ids: &[PackageId]) -> Vec<usize> {
         let mut result: Vec<(&Node, usize)> = self
@@ -147,105 +137,16 @@ impl<'a> Graph<'a> {
         result.into_iter().map(|(_node, i)| i).collect()
     }
 
-    pub fn package_for_id(&self, id: PackageId) -> &Package {
-        self.package_map[&id]
-    }
-
     pub fn package_id_for_index(&self, index: usize) -> PackageId {
         match self.nodes[index] {
             Node::Package { package_id, .. } => package_id,
             Node::Feature { .. } => panic!("unexpected feature node"),
         }
     }
-
-    /// Returns `true` if the given feature node index is a feature enabled
-    /// via the command-line.
-    pub fn is_cli_feature(&self, index: usize) -> bool {
-        self.cli_features.contains(&index)
-    }
-
-    /// Returns a new graph by removing all nodes not reachable from the
-    /// given nodes.
-    pub fn from_reachable(&self, roots: &[usize]) -> Graph<'a> {
-        // Graph built with features does not (yet) support --duplicates.
-        assert!(self.dep_name_map.is_empty());
-        let mut new_graph = Graph::new(self.package_map.clone());
-        // Maps old index to new index. None if not yet visited.
-        let mut remap: Vec<Option<usize>> = vec![None; self.nodes.len()];
-
-        fn visit(
-            graph: &Graph<'_>,
-            new_graph: &mut Graph<'_>,
-            remap: &mut Vec<Option<usize>>,
-            index: usize,
-        ) -> usize {
-            if let Some(new_index) = remap[index] {
-                // Already visited.
-                return new_index;
-            }
-            let node = graph.node(index).clone();
-            let new_from = new_graph.add_node(node);
-            remap[index] = Some(new_from);
-            // Visit dependencies.
-            for (edge_kind, edge_indexes) in &graph.edges[index].0 {
-                for edge_index in edge_indexes {
-                    let new_to_index = visit(graph, new_graph, remap, *edge_index);
-                    new_graph.edges[new_from].add_edge(*edge_kind, new_to_index);
-                }
-            }
-            new_from
-        }
-
-        // Walk the roots, generating a new graph as it goes along.
-        for root in roots {
-            visit(self, &mut new_graph, &mut remap, *root);
-        }
-
-        new_graph
-    }
-
-    /// Inverts the direction of all edges.
-    pub fn invert(&mut self) {
-        let mut new_edges = vec![Edges::new(); self.edges.len()];
-        for (from_idx, node_edges) in self.edges.iter().enumerate() {
-            for (kind, edges) in &node_edges.0 {
-                for edge_idx in edges {
-                    new_edges[*edge_idx].add_edge(*kind, from_idx);
-                }
-            }
-        }
-        self.edges = new_edges;
-    }
-
-    /// Returns a list of nodes that are considered "duplicates" (same package
-    /// name, with different versions/features/source/etc.).
-    pub fn find_duplicates(&self) -> Vec<usize> {
-        // Graph built with features does not (yet) support --duplicates.
-        assert!(self.dep_name_map.is_empty());
-
-        // Collect a map of package name to Vec<(&Node, usize)>.
-        let mut packages = HashMap::new();
-        for (i, node) in self.nodes.iter().enumerate() {
-            if let Node::Package { package_id, .. } = node {
-                packages
-                    .entry(package_id.name())
-                    .or_insert_with(Vec::new)
-                    .push((node, i));
-            }
-        }
-
-        let mut dupes: Vec<(&Node, usize)> = packages
-            .into_iter()
-            .filter(|(_name, indexes)| indexes.len() > 1)
-            .flat_map(|(_name, indexes)| indexes)
-            .collect();
-        // For consistent output.
-        dupes.sort_unstable();
-        dupes.into_iter().map(|(_node, i)| i).collect()
-    }
 }
 
 /// Builds the graph.
+#[allow(clippy::too_many_arguments)]
 pub fn build<'a>(
     ws: &Workspace<'_>,
     resolve: &Resolve,
@@ -291,6 +192,7 @@ pub fn build<'a>(
 /// This will also recursively add all of its dependencies.
 ///
 /// Returns the index to the package node.
+#[allow(clippy::too_many_arguments)]
 fn add_pkg(
     graph: &mut Graph<'_>,
     resolve: &Resolve,
