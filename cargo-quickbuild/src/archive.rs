@@ -25,6 +25,12 @@ pub fn tar_target_dir(
         let entry = entry?;
         let path = entry.path();
         let dest = path.strip_prefix(&scratch_dir_path).unwrap();
+        // HACK: don't tar these files.
+        if let ".rustc_info.json" | ".cargo-lock" | "CACHEDIR.TAG" =
+            path.file_name().unwrap().to_str().unwrap()
+        {
+            continue;
+        }
         let mtime = FileTime::from_last_modification_time(&entry.metadata()?);
         match file_timestamps_to_exclude.get(dest) {
             Some(timestamp) if &mtime == timestamp => {
