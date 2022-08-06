@@ -8,6 +8,7 @@ mod resolve;
 mod scheduler;
 mod stats;
 mod std_ext;
+mod vendor;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -18,8 +19,7 @@ use cargo::core::compiler::{CompileMode, UnitInterner};
 use cargo::core::dependency::DepKind;
 use cargo::core::Package;
 use cargo::core::{PackageId, Workspace};
-use cargo::ops::tree::{Charset, EdgeKind, Prefix, Target, TreeOptions};
-use cargo::ops::CompileOptions;
+use cargo::ops::{CompileOptions, Packages};
 use cargo::Config;
 use repo::Repo;
 
@@ -28,6 +28,7 @@ use crate::quick_resolve::QuickResolve;
 use crate::resolve::create_resolve;
 use crate::scheduler::build_missing_packages;
 use crate::std_ext::ExitStatusExt;
+use crate::vendor::tree::{Charset, EdgeKind, Prefix, Target, TreeOptions};
 
 fn main() -> Result<()> {
     // hack: disable target/.rustc_info.json nonsense.
@@ -63,9 +64,16 @@ fn main() -> Result<()> {
         .map(|pkg| (pkg.package_id(), pkg))
         .collect();
 
+    let packages = match &options.spec {
+        Packages::Default => Packages::Default,
+        Packages::All => Packages::All,
+        Packages::OptOut(vec) => Packages::OptOut(vec.clone()),
+        Packages::Packages(vec) => Packages::Packages(vec.clone()),
+    };
+
     let opts = TreeOptions {
         cli_features: options.cli_features.clone(),
-        packages: options.spec.clone(),
+        packages,
         target: Target::Host,
         edge_kinds: [
             EdgeKind::Dep(DepKind::Normal),
@@ -84,7 +92,7 @@ fn main() -> Result<()> {
         max_display_depth: Default::default(),
         no_proc_macro: Default::default(),
     };
-    let graph = cargo::ops::tree::graph::build(
+    let graph = vendor::tree::graph::build(
         &ws,
         &workspace_resolve.targeted_resolve,
         &workspace_resolve.resolved_features,

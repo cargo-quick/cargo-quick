@@ -2,10 +2,11 @@ use std::collections::BTreeSet;
 
 use cargo::core::dependency::DepKind;
 use cargo::core::{PackageId, Workspace};
-use cargo::ops::tree::graph::Graph;
-use cargo::ops::tree::EdgeKind;
 use cargo::ops::WorkspaceResolve;
 use itertools::Itertools;
+
+use crate::vendor::tree::graph::Graph;
+use crate::vendor::tree::EdgeKind;
 
 /// A wrapper around the cargo core resolve machinery, to make cargo-quickbuild work.
 /// Probably won't be all that quick ;-)
@@ -71,9 +72,10 @@ mod tests {
 
     use cargo::core::compiler::RustcTargetData;
     use cargo::core::Package;
-    use cargo::ops::tree::{Charset, Prefix, Target, TreeOptions};
     use cargo::util::interning::InternedString;
     use itertools::Itertools;
+
+    use crate::vendor::tree::{Charset, Prefix, Target, TreeOptions};
 
     use super::super::*;
     use super::*;
@@ -116,7 +118,7 @@ mod tests {
             max_display_depth: Default::default(),
             no_proc_macro: Default::default(),
         };
-        let graph = cargo::ops::tree::graph::build(
+        let graph = crate::vendor::tree::graph::build(
             &ws,
             &workspace_resolve.targeted_resolve,
             &workspace_resolve.resolved_features,

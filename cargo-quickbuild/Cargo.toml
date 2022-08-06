@@ -2,12 +2,20 @@
 name = "cargo-quickbuild"
 version = "0.0.0"
 edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/cargo-quick/cargo-quick"
+description = """
+A wrapper around `cargo build`, using precompiled crates.
+"""
+
+[badges]
+maintenance = { status = "experimental" }
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 anyhow = "1.0.57"
-cargo = { version = "0.61.1", git = "https://github.com/alsuren/cargo", branch = "quickbuild-hacks" }
+cargo = { version = "0.61.1" }
 crypto-hash = "0.3.4"
 filetime = "0.2.16"
 home = "0.5.3"
