@@ -2,10 +2,11 @@ use std::collections::BTreeSet;
 
 use cargo::core::dependency::DepKind;
 use cargo::core::{PackageId, Workspace};
-use cargo::ops::tree::graph::Graph;
-use cargo::ops::tree::EdgeKind;
 use cargo::ops::WorkspaceResolve;
 use itertools::Itertools;
+
+use crate::vendor::tree::graph::Graph;
+use crate::vendor::tree::EdgeKind;
 
 /// A wrapper around the cargo core resolve machinery, to make cargo-quickbuild work.
 /// Probably won't be all that quick ;-)
