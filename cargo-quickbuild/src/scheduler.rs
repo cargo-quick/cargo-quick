@@ -9,7 +9,7 @@ use crate::quick_resolve::QuickResolve;
 use crate::repo::Repo;
 
 pub fn build_missing_packages(
-    resolve: QuickResolve,
+    resolve: &QuickResolve,
     repo: &Repo,
     root_package: PackageId,
 ) -> Result<(), anyhow::Error> {
@@ -21,11 +21,14 @@ pub fn build_missing_packages(
 
     let mut built_packages: HashSet<PackageId> = Default::default();
 
+    // FIXME: I think it might be better to switch this out for a simple depth-first traversal.
+    // Mostly because it would reduce my iteration time - fewer packages need to be built before
+    // uncovering "level 1" problems.
     for level in 0..=100 {
         println!("START OF LEVEL {level}");
         let current_level;
         (current_level, packages_to_build) = packages_to_build.iter().partition(|package_id| {
-            outstanding_deps(&resolve, &built_packages, **package_id).is_empty()
+            outstanding_deps(resolve, &built_packages, **package_id).is_empty()
         });
 
         dbg!(&current_level);
@@ -38,7 +41,7 @@ pub fn build_missing_packages(
             for package_id in packages_to_build {
                 dbg!((
                     package_id,
-                    outstanding_deps(&resolve, &built_packages, package_id)
+                    outstanding_deps(resolve, &built_packages, package_id)
                 ));
             }
             anyhow::bail!("current_level.is_empty() && !packages_to_build.is_empty()");
@@ -51,7 +54,7 @@ pub fn build_missing_packages(
                 println!("🎉 We're done here 🎉");
                 return Ok(());
             }
-            build_tarball_if_not_exists(&resolve, repo, package_id)?;
+            build_tarball_if_not_exists(resolve, repo, package_id)?;
             built_packages.insert(package_id);
         }
     }
