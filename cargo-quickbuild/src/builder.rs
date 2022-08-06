@@ -58,7 +58,7 @@ pub fn build_tarball<'cfg, 'a>(
 }
 
 pub fn cargo_init(scratch_dir: &std::path::PathBuf) -> Result<()> {
-    command(["cargo", "init"])
+    command(["cargo", "init", "--vcs=none"])
         .arg(scratch_dir)
         .status()?
         .exit_ok_ext()?;
