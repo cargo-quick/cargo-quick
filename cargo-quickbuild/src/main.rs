@@ -23,9 +23,11 @@ use cargo::ops::CompileOptions;
 use cargo::Config;
 use repo::Repo;
 
+use crate::builder::{command, unpack_tarballs_of_deps};
 use crate::quick_resolve::QuickResolve;
 use crate::resolve::create_resolve;
 use crate::scheduler::build_missing_packages;
+use crate::std_ext::ExitStatusExt;
 
 fn main() -> Result<()> {
     pretty_env_logger::init();
@@ -112,5 +114,21 @@ fn main() -> Result<()> {
         .unwrap()
         .0;
 
-    build_missing_packages(resolve, &repo, root_package)
+    build_missing_packages(&resolve, &repo, root_package)?;
+    let here = PathBuf::from(".");
+    let repo_root = here.clone();
+
+    assert!(
+        !repo_root.join("target").exists(),
+        "please remove your target dir before continuing"
+    );
+
+    unpack_tarballs_of_deps(&resolve, &repo, root_package, &repo_root)?;
+
+    command(["cargo", "build"])
+        .current_dir(&here)
+        .status()?
+        .exit_ok_ext()?;
+
+    Ok(())
 }

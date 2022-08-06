@@ -10,6 +10,7 @@ use filetime::FileTime;
 use tar::{Archive, Builder, Entry, EntryType};
 
 use crate::pax::{BuilderExt, PaxBuilder};
+use crate::std_ext::ReadExt;
 
 pub fn tar_target_dir(
     scratch_dir_path: std::path::PathBuf,
@@ -96,20 +97,27 @@ pub fn tracked_unpack<R: Read>(
             directories.push(file);
         } else {
             let mtime = get_high_res_mtime(&mut file)?;
-            insert_timestamp(&mut file_timestamps, &file, mtime)?;
-            if file.path().unwrap().exists() {
-                assert_eq!(
-                    mtime,
-                    FileTime::from_last_modification_time(&std::fs::metadata(&file.path()?)?)
-                );
+            let path = file.path()?.to_path_buf();
+            insert_timestamp(&mut file_timestamps, &path, mtime)?;
+            if path.exists() {
+                let on_disk_mtime =
+                    FileTime::from_last_modification_time(&std::fs::metadata(&path)?);
+                if mtime != on_disk_mtime {
+                    anyhow::bail!(
+                        "timestamps differ for {path:?}: {mtime} != {on_disk_mtime}.\non disk:\n{on_disk}\nfrom tarball:\n{from_tarball}",
+                        on_disk = std::fs::read_to_string(file.path().unwrap()).unwrap(),
+                        from_tarball = file.read_as_string()?
+                    );
+                }
             }
             file.unpack_in(dst)?;
             filetime::set_file_times(dst.join(file.path()?), mtime, mtime)?;
         }
     }
     for mut dir in directories {
+        let path = dir.path()?.to_path_buf();
         let mtime = get_high_res_mtime(&mut dir)?;
-        insert_timestamp(&mut file_timestamps, &dir, mtime)?;
+        insert_timestamp(&mut file_timestamps, &path, mtime)?;
         dir.unpack_in(dst)?;
         filetime::set_file_times(dst.join(dir.path()?), mtime, mtime)?;
     }
@@ -142,15 +150,14 @@ fn get_high_res_mtime<R: Read>(file: &mut Entry<R>) -> Result<FileTime, anyhow::
     Ok(FileTime::from_unix_time(seconds, nanos))
 }
 
-fn insert_timestamp<R: Read>(
+fn insert_timestamp(
     file_timestamps: &mut BTreeMap<PathBuf, FileTime>,
-    file: &Entry<R>,
+    path: &Path,
     mtime: FileTime,
 ) -> Result<(), anyhow::Error> {
-    let path = file.path()?.clone().into_owned();
     log::debug!("have high-res timesamp for {path:?}: {mtime}");
 
-    match file_timestamps.entry(path) {
+    match file_timestamps.entry(path.to_owned()) {
         btree_map::Entry::Vacant(entry) => {
             entry.insert(mtime);
             Ok(())

@@ -84,14 +84,16 @@ pub fn unpack_tarballs_of_deps<'cfg, 'a>(
             .with_context(|| format!("reading description {description:?} for {package_id:?}"))?;
         let mut archive = Archive::new(file);
         // These should be *guaranteed* to already be built.
-        file_timestamps.append(&mut tracked_unpack(&mut archive, scratch_dir)?);
+        let mut timestamps = tracked_unpack(&mut archive, scratch_dir)
+            .with_context(|| format!("unpacking {description:?}"))?;
+        file_timestamps.append(&mut timestamps);
     }
 
     Ok(file_timestamps)
 }
 
 fn add_deps_to_manifest(
-    scratch_dir: &PathBuf,
+    scratch_dir: &Path,
     description: &PackageDescription,
 ) -> Result<(), anyhow::Error> {
     let cargo_toml_path = scratch_dir.join("Cargo.toml");
