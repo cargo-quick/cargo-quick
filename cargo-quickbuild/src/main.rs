@@ -19,7 +19,7 @@ use cargo::core::compiler::{CompileMode, UnitInterner};
 use cargo::core::dependency::DepKind;
 use cargo::core::Package;
 use cargo::core::{PackageId, Workspace};
-use cargo::ops::CompileOptions;
+use cargo::ops::{CompileOptions, Packages};
 use cargo::Config;
 use repo::Repo;
 
@@ -64,9 +64,16 @@ fn main() -> Result<()> {
         .map(|pkg| (pkg.package_id(), pkg))
         .collect();
 
+    let packages = match &options.spec {
+        Packages::Default => Packages::Default,
+        Packages::All => Packages::All,
+        Packages::OptOut(vec) => Packages::OptOut(vec.clone()),
+        Packages::Packages(vec) => Packages::Packages(vec.clone()),
+    };
+
     let opts = TreeOptions {
         cli_features: options.cli_features.clone(),
-        packages: options.spec.clone(),
+        packages,
         target: Target::Host,
         edge_kinds: [
             EdgeKind::Dep(DepKind::Normal),
