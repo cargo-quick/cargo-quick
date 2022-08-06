@@ -30,6 +30,9 @@ use crate::scheduler::build_missing_packages;
 use crate::std_ext::ExitStatusExt;
 
 fn main() -> Result<()> {
+    // hack: disable target/.rustc_info.json nonsense.
+    std::env::set_var("CARGO_CACHE_RUSTC_INFO", "0");
+
     pretty_env_logger::init();
 
     let mut args: Vec<_> = std::env::args().collect();
