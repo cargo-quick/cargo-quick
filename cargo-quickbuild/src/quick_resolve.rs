@@ -139,15 +139,18 @@ fn clone_packages(packages: &Packages) -> Packages {
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
+    use std::path::Path;
 
-    use cargo::core::compiler::RustcTargetData;
+    use cargo::core::compiler::{RustcTargetData, UnitInterner};
     use cargo::core::Package;
+    use cargo::util::command_prelude::CompileMode;
     use cargo::util::interning::InternedString;
+    use cargo::Config;
     use itertools::Itertools;
 
+    use crate::resolve::create_resolve;
     use crate::vendor::tree::{Charset, Prefix, Target, TreeOptions};
 
-    use super::super::*;
     use super::*;
 
     #[test]
