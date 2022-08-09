@@ -40,11 +40,10 @@ fn main() -> Result<()> {
     if args[1] == "quickbuild" {
         args.remove(1);
     }
-    // example invocation for testing:
-    //     \in cargo-quickbuild/ cargo run -- $HOME/tmp/`git describe`
-    let tarball_dir = match args.get(1) {
-        Some(path) => PathBuf::from(path),
-        None => home::home_dir().unwrap().join("tmp/quick"),
+
+    let tarball_dir = match std::env::var("CARGO_QUICK_TARBALL_DIR") {
+        Ok(path) => PathBuf::from(path),
+        _ => home::home_dir().unwrap().join("tmp/quick"),
     };
     let repo = Repo::new(tarball_dir);
 
