@@ -50,7 +50,6 @@ fn main() -> Result<()> {
 
     let config = Config::default()?;
 
-    // FIXME: compile cargo in release mode
     let ws = Workspace::new(&Path::new("Cargo.toml").canonicalize()?, &config)?;
     let options = CompileOptions::new(&config, CompileMode::Build)?;
 
