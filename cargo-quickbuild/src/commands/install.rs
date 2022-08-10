@@ -20,12 +20,11 @@ use crate::std_ext::ExitStatusExt;
 // At some point I will pick a command-line parsing crate, but for now this will do.
 pub fn exec(args: &[String]) -> anyhow::Result<()> {
     assert_eq!(args[0], "install");
-    let krate = args.get(1);
-    if krate.is_none() {
+    if args.len() != 2 {
         bail!("USAGE: cargo quickbuild install $package_name");
     }
-    let krate = krate.unwrap();
-    assert_eq!(args, &["install", krate.as_str()]);
+    let krate = args[1].as_str();
+    assert_eq!(args, &["install", krate]);
 
     let mut config = Config::default()?;
     config.reload_rooted_at(home::cargo_home()?)?;
@@ -68,7 +67,7 @@ pub fn exec(args: &[String]) -> anyhow::Result<()> {
 
         unpack_tarballs_of_deps(&resolve, &repo, package.package_id(), tempdir.path())?;
     }
-    debug_dempdir(&tempdir)?;
+
     command([
         "cargo",
         "install",
@@ -77,23 +76,11 @@ pub fn exec(args: &[String]) -> anyhow::Result<()> {
         "--force",
         "--target-dir",
         tempdir.path().join("target").to_str().unwrap(),
-        krate.as_str(),
+        krate,
     ])
     .status()?
     .exit_ok_ext()?;
 
-    debug_dempdir(&tempdir)?;
-
-    // leak the tempdir for debugging
-    tempdir.into_path();
-
-    Ok(())
-}
-
-fn debug_dempdir(tempdir: &TempDir) -> Result<(), anyhow::Error> {
-    command(["find", tempdir.path().to_str().unwrap()])
-        .status()?
-        .exit_ok_ext()?;
     Ok(())
 }
 
