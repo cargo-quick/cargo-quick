@@ -47,12 +47,7 @@ pub fn exec(args: &[String]) -> anyhow::Result<()> {
         .unwrap()
         .0;
 
-    let tarball_dir = match std::env::var("CARGO_QUICK_TARBALL_DIR") {
-        Ok(path) => PathBuf::from(path),
-        _ => home::home_dir().unwrap().join("tmp/quick"),
-    };
-
-    let repo = Repo::new(tarball_dir);
+    let repo = Repo::from_env();
 
     build_missing_packages(&resolve, &repo, root_package)?;
     let here = PathBuf::from(".");

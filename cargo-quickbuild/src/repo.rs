@@ -10,7 +10,12 @@ pub struct Repo {
 }
 
 impl Repo {
-    pub fn new(tarball_dir: PathBuf) -> Self {
+    pub fn from_env() -> Self {
+        let tarball_dir = match std::env::var("CARGO_QUICK_TARBALL_DIR") {
+            Ok(path) => PathBuf::from(path),
+            _ => home::home_dir().unwrap().join("tmp/quick"),
+        };
+
         std::fs::create_dir_all(&tarball_dir).unwrap();
         Self { tarball_dir }
     }
