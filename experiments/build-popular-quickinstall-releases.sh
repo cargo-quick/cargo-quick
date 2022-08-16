@@ -31,7 +31,10 @@ cat ../quickbuild-analytics-data/stats-2022-07-24.json \
             continue
         fi
 
+        # we will have a tag for this if it successfully built
         \in ../cargo-quickinstall git rev-parse "$tag" || continue
+
+        cargo prefetch "$crate"
         if cargo quickbuild install "$crate" 2>&1 > "$crate.out" ; then
             echo "$crate" >> success.txt
         else
