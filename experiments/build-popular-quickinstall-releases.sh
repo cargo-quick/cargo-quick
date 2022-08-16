@@ -14,8 +14,7 @@ fi
 
 cargo install --locked --offline --path $HOME/src/cargo-quick/cargo-quickbuild
 
-# FIXME: move this to quickbuild-analytics-data
-cat ../cargo-quickinstall/stats-2022-07-24.json \
+cat ../quickbuild-analytics-data/stats-2022-07-24.json \
     | jq 'to_entries | sort_by(-.value) | map(.key) | .[]' -r \
     | grep aarch64-apple-darwin \
     | head -n 100 \
