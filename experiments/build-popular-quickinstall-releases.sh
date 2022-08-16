@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-if [ "$(hostname)" != "admins-Virtual-Machine.local" ] ; then
+if [ "$(hostname)" != "admins-Virtual-Machine.local" ] && [ "$DRY_RUN" != 1 ]; then
     echo "This script must be run in a sandbox.
         brew install cirruslabs/cli/tart
         tart clone ghcr.io/cirruslabs/macos-monterey-base:latest monterey-base
@@ -23,6 +23,10 @@ cat ../cargo-quickinstall/stats-2022-07-24.json \
         tag="$(echo "$path" | sed 's:/:-:g')"
         crate="$(echo "$path" | sed 's:/.*::')"
         echo $tag
+        if [ "$DRY_RUN" = 1 ]; then
+            echo "would build $crate"
+            continue
+        fi
         if [ "$(hostname)" != "admins-Virtual-Machine.local" ]; then
             echo "this script must be run in a sandbox"
             continue
