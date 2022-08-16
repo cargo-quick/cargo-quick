@@ -41,4 +41,6 @@ cat ../quickbuild-analytics-data/stats-2022-07-24.json \
             mv "$crate.out" failure/
             echo "$crate" >> failure.txt
         fi
+        rm -f ~/tmp/quick/*.tar || true
+        rm -f "$TMPDIR"/cargo-quick* || true
     done
