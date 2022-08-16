@@ -33,8 +33,12 @@ cat ../quickbuild-analytics-data/stats-2022-07-24.json \
 
         \in ../cargo-quickinstall git rev-parse "$tag" || continue
         if ( cargo quickbuild install "$crate" 2>&1 ) | tee "$crate.out" ; then
+            mkdir -p success/
+            mv "$crate.out" success/
             echo "$crate" >> success.txt
         else
+            mkdir -p failure/
+            mv "$crate.out" failure/
             echo "$crate" >> failure.txt
         fi
     done
