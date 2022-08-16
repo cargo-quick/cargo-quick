@@ -12,7 +12,7 @@ if [ "$(hostname)" != "admins-Virtual-Machine.local" ] && [ "$DRY_RUN" != 1 ]; t
     exit 1
 fi
 
-cargo install --locked --offline --path $HOME/src/cargo-quick/cargo-quickbuild
+cargo install --locked --path $HOME/src/cargo-quick/cargo-quickbuild
 
 cat ../quickbuild-analytics-data/stats-2022-07-24.json \
     | jq 'to_entries | sort_by(-.value) | map(.key) | .[]' -r \
