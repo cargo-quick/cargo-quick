@@ -109,8 +109,22 @@ pub fn tracked_unpack<R: Read>(
                 let on_disk_mtime =
                     FileTime::from_last_modification_time(&std::fs::metadata(&path)?);
                 if mtime != on_disk_mtime {
+                    // FIXME: make an extension trait for this conversion
+                    let mtime =
+                        chrono::NaiveDateTime::from_timestamp(mtime.seconds(), mtime.nanoseconds());
+                    let on_disk_mtime = chrono::NaiveDateTime::from_timestamp(
+                        on_disk_mtime.seconds(),
+                        on_disk_mtime.nanoseconds(),
+                    );
+                    let now = chrono::Utc::now();
+
                     anyhow::bail!(
-                        "timestamps differ for {path:?}: {mtime} != {on_disk_mtime}.\non disk:\n{on_disk}\nfrom tarball:\n{from_tarball}",
+                        "timestamps differ for {path:?}:\n\
+                        mtime != on_disk_mtime.\n\
+                        {mtime} != {on_disk_mtime}.\n\
+                        (now = {now})\n\
+                        on disk:\n{on_disk}\n\
+                        from tarball:\n{from_tarball}",
                         on_disk = std::fs::read_to_string(file.path().unwrap()).unwrap(),
                         from_tarball = file.read_as_string()?
                     );

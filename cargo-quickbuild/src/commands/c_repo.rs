@@ -29,6 +29,8 @@ pub fn exec(args: &[String]) -> anyhow::Result<()> {
 
         let mtime = get_high_res_mtime(&mut entry)?;
 
+        let mtime = chrono::NaiveDateTime::from_timestamp(mtime.seconds(), mtime.nanoseconds());
+
         println!("{filename:?} found in: {tarball_path:?} with mtime {mtime}");
     }
 
