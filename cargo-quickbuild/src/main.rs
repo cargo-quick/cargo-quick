@@ -30,6 +30,7 @@ fn main() -> Result<()> {
     match args[1].as_str() {
         "build" => commands::c_build::exec(&args[1..]),
         "install" => commands::c_install::exec(&args[1..]),
+        "repo" => commands::c_repo::exec(&args[1..]),
         // FIXME:
         // * I intend to use `cargo quick` as a thin bootstrapping tool. If we are being called
         //   from `cargo quick`, we should adjust our usage messages appropriately.

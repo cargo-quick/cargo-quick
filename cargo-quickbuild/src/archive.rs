@@ -130,7 +130,7 @@ pub fn tracked_unpack<R: Read>(
     Ok(file_timestamps)
 }
 
-fn get_high_res_mtime<R: Read>(file: &mut Entry<R>) -> Result<FileTime, anyhow::Error> {
+pub(crate) fn get_high_res_mtime<R: Read>(file: &mut Entry<R>) -> Result<FileTime, anyhow::Error> {
     let path = file.path().unwrap().into_owned();
     let low_res_mtime = file.header().mtime().unwrap();
     let mtime = file
