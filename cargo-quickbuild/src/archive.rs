@@ -103,11 +103,13 @@ pub fn tracked_unpack<R: Read>(
             directories.push(file);
         } else {
             let mtime = get_high_res_mtime(&mut file)?;
-            let path = file.path()?.to_path_buf();
-            insert_timestamp(&mut file_timestamps, &path, mtime)?;
-            if path.exists() {
+            let relative_path = file.path()?.to_path_buf();
+            let absolute_path = dst.join(&relative_path);
+
+            insert_timestamp(&mut file_timestamps, &relative_path, mtime)?;
+            if absolute_path.exists() {
                 let on_disk_mtime =
-                    FileTime::from_last_modification_time(&std::fs::metadata(&path)?);
+                    FileTime::from_last_modification_time(&std::fs::metadata(&absolute_path)?);
                 if mtime != on_disk_mtime {
                     // FIXME: make an extension trait for this conversion
                     let mtime =
@@ -119,7 +121,7 @@ pub fn tracked_unpack<R: Read>(
                     let now = chrono::Utc::now();
 
                     anyhow::bail!(
-                        "timestamps differ for {path:?}:\n\
+                        "timestamps differ for {relative_path:?} ({absolute_path:?}):\n\
                         mtime != on_disk_mtime.\n\
                         {mtime} != {on_disk_mtime}.\n\
                         (now = {now})\n\
