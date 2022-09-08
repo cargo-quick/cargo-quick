@@ -1,3 +1,3 @@
-pub mod c_build;
-pub mod c_install;
-pub mod c_repo;
+pub mod cmd_build;
+pub mod cmd_install;
+pub mod cmd_repo;
