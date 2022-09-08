@@ -127,13 +127,13 @@ pub fn tracked_unpack<R: Read>(
                         (now = {now})\n\
                         on disk:\n{on_disk}\n\
                         from tarball:\n{from_tarball}",
-                        on_disk = std::fs::read_to_string(file.path().unwrap()).unwrap(),
+                        on_disk = std::fs::read_to_string(&absolute_path).unwrap(),
                         from_tarball = file.read_as_string()?
                     );
                 }
             }
             file.unpack_in(dst)?;
-            filetime::set_file_times(dst.join(file.path()?), mtime, mtime)?;
+            filetime::set_file_times(&absolute_path, mtime, mtime)?;
         }
     }
     for mut dir in directories {
