@@ -15,6 +15,7 @@ use crate::quick_resolve::create_quick_resolve;
 use crate::repo::Repo;
 use crate::resolve::create_resolve;
 use crate::scheduler::build_missing_packages;
+use crate::std_ext::ExitStatusExt;
 
 // At some point I will pick a command-line parsing crate, but for now this will do.
 pub fn exec(args: &[String]) -> anyhow::Result<()> {
@@ -33,7 +34,7 @@ pub fn exec(args: &[String]) -> anyhow::Result<()> {
         false,
         None,
         false,
-        true,
+        false,
         false,
         &Some(tempdir.path().join("target")),
         &[],
@@ -54,7 +55,8 @@ pub fn exec(args: &[String]) -> anyhow::Result<()> {
     {
         let target_dir = Filesystem::new(tempdir.path().join("target"));
 
-        let ws = Workspace::ephemeral(package.clone(), &config, Some(target_dir), false)?;
+        let mut ws = Workspace::ephemeral(package.clone(), &config, Some(target_dir), false)?;
+        ws.set_ignore_lock(true);
         let options = CompileOptions::new(&config, CompileMode::Build)?;
 
         let interner = UnitInterner::new();
@@ -67,23 +69,20 @@ pub fn exec(args: &[String]) -> anyhow::Result<()> {
         unpack_tarballs_of_deps(&resolve, &repo, package.package_id(), tempdir.path())?;
     }
 
-    log::warn!("Not actually running cargo install because it doesn't work (isn't faster) yet. \
-        The purpose of `cargo quickbuild install` in its current form is to smoke-test the \
-        package building process, with a bunch of packages from the `cargo-quickinstall` most-requested-packages list.");
     // FIXME: this isn't actually any cheaper than doing a cargo install from scratch,
     // so it kind-of defeats the point of using cargo-quickbuild.
-    // command([
-    //     "cargo",
-    //     "install",
-    //     "--offline",
-    //     "--debug",
-    //     "--force",
-    //     "--target-dir",
-    //     tempdir.path().join("target").to_str().unwrap(),
-    //     krate,
-    // ])
-    // .status()?
-    // .exit_ok_ext()?;
+    crate::builder::command([
+        "cargo",
+        "install",
+        "--offline",
+        "--debug",
+        "--force",
+        "--target-dir",
+        tempdir.path().join("target").to_str().unwrap(),
+        krate,
+    ])
+    .status()?
+    .exit_ok_ext()?;
 
     Ok(())
 }

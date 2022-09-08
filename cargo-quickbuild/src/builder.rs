@@ -113,7 +113,7 @@ pub fn run_cargo_build(scratch_dir: &std::path::PathBuf) -> Result<()> {
     //     .status()?
     //     .exit_ok_ext()?;
 
-    command(["cargo", "build", "--jobs=1", "--offline"])
+    command(["cargo", "build", "--jobs=1"])
         .current_dir(scratch_dir)
         .status()?
         .exit_ok_ext()?;
