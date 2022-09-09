@@ -12,7 +12,7 @@ cargo install --locked --path $HOME/src/cargo-quick/cargo-quickbuild
 #     # \in ~/tmp/$crate cargo tree --edges=all --invert syn 
 # done
 
-# cargo quickbuild repo find target/debug/.fingerprint/syn-6ad1e5e6f3b856c8/dep-build-script-build-script-build
+cargo quickbuild repo find target/debug/.fingerprint/syn-0d23c7d14ae11633/lib-syn.json
 
 # "target/debug/.fingerprint/syn-6ad1e5e6f3b856c8/dep-build-script-build-script-build" found in:
 # "/Users/alsuren/tmp/quick/thiserror-impl-1.0.30-00da0095b58ac4ed117f2b68a426d4d6aa7b1ebe0d6fd775382130389cbce6f4.tar" with mtime 2022-09-09 14:01:52.828516870

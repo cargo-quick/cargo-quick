@@ -97,6 +97,7 @@ pub fn tracked_unpack<R: Read>(
     // descendants), to ensure that directory permissions do not interfer with descendant
     // extraction.
     let mut directories = Vec::new();
+    let mut problem = String::new();
     for entry in archive.entries()? {
         let mut file = entry.context("reading entry from archive")?;
         if file.header().entry_type() == EntryType::Directory {
@@ -120,21 +121,28 @@ pub fn tracked_unpack<R: Read>(
                     );
                     let now = chrono::Utc::now();
 
-                    anyhow::bail!(
+                    problem = format!(
                         "timestamps differ for {relative_path:?} ({absolute_path:?}):\n\
                         mtime != on_disk_mtime.\n\
                         {mtime} != {on_disk_mtime}.\n\
                         (now = {now})\n\
                         on disk:\n{on_disk}\n\
                         from tarball:\n{from_tarball}",
-                        on_disk = std::fs::read_to_string(&absolute_path).unwrap(),
-                        from_tarball = file.read_as_string()?
+                        on_disk = std::fs::read_to_string(&absolute_path)
+                            .unwrap_or_else(|_| String::from("<<binary file>>")),
+                        from_tarball = file
+                            .read_as_string()
+                            .unwrap_or_else(|_| String::from("<<binary file>>"))
                     );
+                    eprintln!("{problem}");
                 }
             }
             file.unpack_in(dst)?;
             filetime::set_file_times(&absolute_path, mtime, mtime)?;
         }
+    }
+    if !problem.is_empty() {
+        anyhow::bail!("{problem}")
     }
     for mut dir in directories {
         let path = dir.path()?.to_path_buf();
