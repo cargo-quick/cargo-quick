@@ -2,6 +2,14 @@
 
 set -euxo pipefail
 
+echo '
+This is to check the behaviour of `cargo build` when you tar/untar the target directory.
+
+Run the script, and view the git log that it creates. You probably want to throw away the branch when you'\''re done.
+
+It turns out that `tar` defaults to only recording timestamps to the nearest second, which breaks cargo'\''s fingerprints and triggers a full rebuild.
+'
+
 INITIAL_COMMIT=`git rev-parse HEAD`
 
 LAST_COMMIT_MESSAGE=""

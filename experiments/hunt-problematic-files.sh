@@ -2,6 +2,8 @@
 
 set -euo pipefail
 
+echo 'This script is deprecated. Use `cargo quickbuild repo find $problematic_file` instead'
+
 OTHER_GIT_REPO=${1?USAGE $0 path/to/rust/crate/repo target/problematic/file}
 PROBLEM=${2?USAGE $0 path/to/rust/crate/repo target/problematic/file}
 
