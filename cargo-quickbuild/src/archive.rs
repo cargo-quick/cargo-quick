@@ -10,7 +10,6 @@ use filetime::FileTime;
 use tar::{Archive, Builder, Entry, EntryType};
 
 use crate::pax::{BuilderExt, PaxBuilder};
-use crate::std_ext::ReadExt;
 
 pub fn tar_target_dir(
     scratch_dir_path: std::path::PathBuf,
@@ -121,18 +120,30 @@ pub fn tracked_unpack<R: Read>(
                     );
                     let now = chrono::Utc::now();
 
+                    let on_disk_contents = std::fs::read(&absolute_path)?;
+                    let mut from_tarball_contents = Vec::new();
+                    file.read_to_end(&mut from_tarball_contents)?;
+
+                    let contents_differ_message = if on_disk_contents == from_tarball_contents {
+                        String::from("contents identical")
+                    } else {
+                        format!(
+                            "contents differ:\n\
+                        on disk:\n{on_disk}\n\
+                        from tarball:\n{from_tarball}",
+                            on_disk = std::str::from_utf8(&on_disk_contents)
+                                .unwrap_or_else(|_| "<<binary file>>"),
+                            from_tarball = std::str::from_utf8(&from_tarball_contents)
+                                .unwrap_or_else(|_| "<<binary file>>"),
+                        )
+                    };
+
                     problem = format!(
                         "timestamps differ for {relative_path:?} ({absolute_path:?}):\n\
                         mtime != on_disk_mtime.\n\
                         {mtime} != {on_disk_mtime}.\n\
                         (now = {now})\n\
-                        on disk:\n{on_disk}\n\
-                        from tarball:\n{from_tarball}",
-                        on_disk = std::fs::read_to_string(&absolute_path)
-                            .unwrap_or_else(|_| String::from("<<binary file>>")),
-                        from_tarball = file
-                            .read_as_string()
-                            .unwrap_or_else(|_| String::from("<<binary file>>"))
+                        {contents_differ_message}",
                     );
                     eprintln!("{problem}");
                 }
