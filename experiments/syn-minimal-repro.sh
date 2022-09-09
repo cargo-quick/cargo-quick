@@ -60,8 +60,7 @@ cargo install --locked --path $HOME/src/cargo-quick/cargo-quickbuild
     # * unicode-ident is replaced with unicode-xid
     # * 
     echo '
-proc-macro2_1_0_36 = { package = "proc-macro2", version = "=1.0.43" }
-syn_1_0_94 = { package = "syn", version = "=1.0.94", features = ["extra-traits", "full"], default-features = false }
+syn_1_0_94 = { package = "syn", version = "=1.0.94", features = ["extra-traits"], default-features = false }
 ' >> ~/tmp/syn-minimal-repro/Cargo.toml
     \in ~/tmp/syn-minimal-repro/ cargo tree --edges=all
     cargo quickbuild build
