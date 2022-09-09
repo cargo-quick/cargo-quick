@@ -12,7 +12,7 @@ cargo install --locked --path $HOME/src/cargo-quick/cargo-quickbuild
 #     # \in ~/tmp/$crate cargo tree --edges=all --invert syn 
 # done
 
-cargo quickbuild repo find target/debug/.fingerprint/syn-6ad1e5e6f3b856c8/dep-build-script-build-script-build
+# cargo quickbuild repo find target/debug/.fingerprint/syn-6ad1e5e6f3b856c8/dep-build-script-build-script-build
 
 # "target/debug/.fingerprint/syn-6ad1e5e6f3b856c8/dep-build-script-build-script-build" found in:
 # "/Users/alsuren/tmp/quick/thiserror-impl-1.0.30-00da0095b58ac4ed117f2b68a426d4d6aa7b1ebe0d6fd775382130389cbce6f4.tar" with mtime 2022-09-09 14:01:52.828516870
@@ -60,11 +60,11 @@ cargo quickbuild repo find target/debug/.fingerprint/syn-6ad1e5e6f3b856c8/dep-bu
     # * unicode-ident is replaced with unicode-xid
     # * 
     echo '
-proc-macro2_1_0_36 = { package = "proc-macro2", version = "=1.0.36", features = ["default", "proc-macro"], default-features = false }
-quote_1_0_14 = { package = "quote", version = "=1.0.14", features = ["default", "proc-macro"], default-features = false }
-# serde_derive_1_0_138 = { package = "serde_derive", version = "=1.0.138", features = ["default"], default-features = false }
-syn_1_0_94 = { package = "syn", version = "=1.0.94", features = ["clone-impls", "default", "derive", "extra-traits", "full", "parsing", "printing", "proc-macro", "quote"], default-features = false }
-unicode-xid_0_2_1 = { package = "unicode-xid", version = "=0.2.1", features = ["default"], default-features = false }
+proc-macro2_1_0_36 = { package = "proc-macro2", version = "=1.0.36" }
+quote_1_0_14 = { package = "quote", version = "=1.0.14" }
+syn_1_0_94 = { package = "syn", version = "=1.0.94", features = ["extra-traits", "full"], default-features = false }
+unicode-xid_0_2_1 = { package = "unicode-xid", version = "=0.2.1" }
 ' >> ~/tmp/syn-minimal-repro/Cargo.toml
+    \in ~/tmp/syn-minimal-repro/ cargo tree --edges=all
     cargo quickbuild build
 )
