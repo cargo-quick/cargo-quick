@@ -83,7 +83,8 @@ pub fn build_tarball_if_not_exists<'cfg, 'a>(
     let package_digest = description.pretty_digest();
 
     if repo.has(&description) {
-        println!("{package_digest:?} already exists",);
+        let cargo_toml_deps = description.cargo_toml_deps();
+        println!("{package_digest:?} already exists (\n```\n{cargo_toml_deps}\n```\n)");
         return Ok(());
     }
     println!("STARTING BUILD\n{package_digest:?}");
