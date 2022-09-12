@@ -139,10 +139,8 @@ pub fn tracked_unpack<R: Read>(
                     };
 
                     problem = format!(
-                        "timestamps differ for {relative_path:?} ({absolute_path:?}):\n\
-                        mtime != on_disk_mtime.\n\
-                        {mtime} != {on_disk_mtime}.\n\
-                        (now = {now})\n\
+                        "{mtime} != {on_disk_mtime} for {relative_path:?} ({absolute_path:?}):\n\
+                        (mtime != on_disk_mtime. now = {now})\n\
                         {contents_differ_message}",
                     );
                     eprintln!("{problem}");
