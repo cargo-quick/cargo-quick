@@ -113,10 +113,14 @@ pub fn run_cargo_build(scratch_dir: &std::path::PathBuf) -> Result<()> {
     //     .status()?
     //     .exit_ok_ext()?;
 
-    command(["cargo", "build", "--jobs=1"])
-        .current_dir(scratch_dir)
-        .status()?
-        .exit_ok_ext()?;
+    command([
+        "/Users/alsuren/src/cargo/target/release/cargo",
+        "build",
+        "--jobs=1",
+    ])
+    .current_dir(scratch_dir)
+    .status()?
+    .exit_ok_ext()?;
 
     command([
         "cargo",
