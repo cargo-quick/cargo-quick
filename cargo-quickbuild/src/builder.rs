@@ -10,12 +10,11 @@ use anyhow::Result;
 use cargo::core::PackageId;
 use filetime::FileTime;
 use tar::Archive;
-use tempdir::TempDir;
 
 use crate::archive::tar_target_dir;
 use crate::archive::tracked_unpack;
-
 use crate::description::PackageDescription;
+use crate::fixed_tempdir::FixedTempDir as TempDir;
 use crate::quick_resolve::QuickResolve;
 use crate::repo::Repo;
 
@@ -28,6 +27,7 @@ pub fn build_tarball<'cfg, 'a>(
     package_id: PackageId,
 ) -> Result<()> {
     let tempdir = TempDir::new("cargo-quickbuild-scratchpad")?;
+    assert!(tempdir.path().ends_with("cargo-quickbuild-scratchpad"));
     let scratch_dir = tempdir.path().join("cargo-quickbuild-scratchpad");
 
     // FIXME: this stats tracking is making it awkward to refactor this method into multiple bits.
@@ -44,6 +44,8 @@ pub fn build_tarball<'cfg, 'a>(
     let description = PackageDescription::new(resolve, package_id);
     add_deps_to_manifest(&scratch_dir, &description)?;
 
+    run_cargo_build(&scratch_dir)?;
+    println!("BUILDING AGAIN");
     run_cargo_build(&scratch_dir)?;
     stats.build_done();
 

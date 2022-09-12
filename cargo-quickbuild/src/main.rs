@@ -2,6 +2,7 @@ mod archive;
 mod builder;
 mod commands;
 mod description;
+mod fixed_tempdir;
 mod pax;
 mod quick_resolve;
 mod repo;

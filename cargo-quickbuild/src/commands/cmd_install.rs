@@ -7,11 +7,10 @@ use cargo::ops::CompileOptions;
 use cargo::sources::SourceConfigMap;
 use cargo::util::Filesystem;
 use cargo::{CargoResult, Config};
-use tempdir::TempDir;
 
 use crate::builder::unpack_tarballs_of_deps;
+use crate::fixed_tempdir::FixedTempDir as TempDir;
 use crate::quick_resolve::create_quick_resolve;
-
 use crate::repo::Repo;
 use crate::resolve::create_resolve;
 use crate::scheduler::build_missing_packages;
