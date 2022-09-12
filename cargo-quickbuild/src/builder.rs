@@ -45,8 +45,6 @@ pub fn build_tarball<'cfg, 'a>(
     add_deps_to_manifest(&scratch_dir, &description)?;
 
     run_cargo_build(&scratch_dir)?;
-    println!("BUILDING AGAIN");
-    run_cargo_build(&scratch_dir)?;
     stats.build_done();
 
     let description = PackageDescription::new(resolve, package_id);
