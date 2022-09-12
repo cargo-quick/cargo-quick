@@ -63,5 +63,17 @@ cargo quickbuild repo find target/debug/.fingerprint/syn-0d23c7d14ae11633/lib-sy
 syn_1_0_94 = { package = "syn", version = "=1.0.94", features = ["extra-traits"], default-features = false }
 ' >> ~/tmp/syn-minimal-repro/Cargo.toml
     \in ~/tmp/syn-minimal-repro/ cargo tree --edges=all
-    cargo quickbuild build
+
+    for package in thiserror-impl serde_derive; do
+        rm -rf ~/tmp/syn-minimal-repro/target/
+        rm -rf ~/tmp/quick/$package*.tar
+        rm -f ~/tmp/$package.log
+
+        # CARGO_LOG=cargo::core::compiler::fingerprint=trace \
+        CARGO_LOG=cargo=trace \
+        cargo quickbuild build 2>&1 | sed 's/^[[]2022[^ ]*//' > ~/tmp/$package.log || true
+    done
+
+    # It looks like the build-script-build unit for thiserror-impl's copy of `syn` "extra-traits" feature, but serde_derive's does not
+    code --diff ~/tmp/thiserror-impl.log ~/tmp/serde_derive.log
 )
