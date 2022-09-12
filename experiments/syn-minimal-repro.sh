@@ -70,8 +70,8 @@ syn_1_0_94 = { package = "syn", version = "=1.0.94", features = ["extra-traits"]
         rm -f ~/tmp/$package.log
 
         # CARGO_LOG=cargo::core::compiler::fingerprint=trace \
-        CARGO_LOG=cargo=trace \
-        cargo quickbuild build 2>&1 | sed 's/^[[]2022[^ ]*//' > ~/tmp/$package.log || true
+        CARGO_LOG=cargo::core::compiler::unit_dependencies=warn,cargo::core::compiler::job_queue=warn,cargo=trace \
+            cargo quickbuild build 2>&1 | sed 's/^[[]2022[^ ]*//' > ~/tmp/$package.log || true
     done
 
     # It looks like the build-script-build unit for thiserror-impl's copy of `syn` "extra-traits" feature, but serde_derive's does not
