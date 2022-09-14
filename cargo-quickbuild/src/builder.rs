@@ -16,8 +16,8 @@ use crate::quick_resolve::QuickResolve;
 use crate::repo::Repo;
 use crate::stats::Stats;
 use crate::util::command::command;
+use crate::util::command::CommandExt;
 use crate::util::fixed_tempdir::FixedTempDir as TempDir;
-use crate::util::std_ext::ExitStatusExt;
 
 pub fn build_tarball<'cfg, 'a>(
     resolve: &QuickResolve<'cfg, 'a>,
@@ -58,8 +58,7 @@ pub fn build_tarball<'cfg, 'a>(
 pub fn cargo_init(scratch_dir: &std::path::PathBuf) -> Result<()> {
     command(["cargo", "init", "--vcs=none"])
         .arg(scratch_dir)
-        .status()?
-        .exit_ok_ext()?;
+        .try_execute()?;
 
     Ok(())
 }
@@ -106,19 +105,13 @@ fn add_deps_to_manifest(
 }
 
 pub fn run_cargo_build(scratch_dir: &std::path::PathBuf) -> Result<()> {
-    // command(["cargo", "tree", "-vv", "--no-dedupe", "--edges=all"])
-    //     .current_dir(scratch_dir)
-    //     .status()?
-    //     .exit_ok_ext()?;
-
     command([
         "/Users/alsuren/src/cargo/target/release/cargo",
         "build",
         "--jobs=1",
     ])
     .current_dir(scratch_dir)
-    .status()?
-    .exit_ok_ext()?;
+    .try_execute()?;
 
     command([
         "cargo",
@@ -128,8 +121,7 @@ pub fn run_cargo_build(scratch_dir: &std::path::PathBuf) -> Result<()> {
         "cargo-quickbuild-scratchpad",
     ])
     .current_dir(scratch_dir)
-    .status()?
-    .exit_ok_ext()?;
+    .try_execute()?;
 
     Ok(())
 }

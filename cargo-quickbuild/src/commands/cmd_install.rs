@@ -13,9 +13,8 @@ use crate::quick_resolve::create_quick_resolve;
 use crate::repo::Repo;
 use crate::resolve::create_resolve;
 use crate::scheduler::build_missing_packages;
-use crate::util::command::command;
+use crate::util::command::{command, CommandExt};
 use crate::util::fixed_tempdir::FixedTempDir as TempDir;
-use crate::util::std_ext::ExitStatusExt;
 
 // At some point I will pick a command-line parsing crate, but for now this will do.
 pub fn exec(args: &[String]) -> anyhow::Result<()> {
@@ -79,8 +78,7 @@ pub fn exec(args: &[String]) -> anyhow::Result<()> {
         tempdir.path().join("target").to_str().unwrap(),
         krate,
     ])
-    .status()?
-    .exit_ok_ext()?;
+    .try_execute()?;
 
     Ok(())
 }
