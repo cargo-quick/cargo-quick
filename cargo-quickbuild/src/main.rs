@@ -2,14 +2,13 @@ mod archive;
 mod builder;
 mod commands;
 mod description;
-mod fixed_tempdir;
 mod pax;
 mod quick_resolve;
 mod repo;
 mod resolve;
 mod scheduler;
 mod stats;
-mod std_ext;
+pub mod util;
 mod vendor;
 
 use anyhow::Result;

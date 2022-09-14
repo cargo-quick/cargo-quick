@@ -14,12 +14,11 @@ use tar::Archive;
 use crate::archive::tar_target_dir;
 use crate::archive::tracked_unpack;
 use crate::description::PackageDescription;
-use crate::fixed_tempdir::FixedTempDir as TempDir;
 use crate::quick_resolve::QuickResolve;
 use crate::repo::Repo;
-
 use crate::stats::Stats;
-use crate::std_ext::ExitStatusExt;
+use crate::util::fixed_tempdir::FixedTempDir as TempDir;
+use crate::util::std_ext::ExitStatusExt;
 
 pub fn build_tarball<'cfg, 'a>(
     resolve: &QuickResolve<'cfg, 'a>,

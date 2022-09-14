@@ -12,7 +12,7 @@ use crate::quick_resolve::create_quick_resolve;
 use crate::repo::Repo;
 use crate::resolve::create_resolve;
 use crate::scheduler::build_missing_packages;
-use crate::std_ext::ExitStatusExt;
+use crate::util::std_ext::ExitStatusExt;
 
 // At some point I will pick a command-line parsing crate, but for now this will do.
 pub fn exec(args: &[String]) -> anyhow::Result<()> {
