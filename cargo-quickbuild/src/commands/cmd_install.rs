@@ -13,6 +13,7 @@ use crate::quick_resolve::create_quick_resolve;
 use crate::repo::Repo;
 use crate::resolve::create_resolve;
 use crate::scheduler::build_missing_packages;
+use crate::util::command::command;
 use crate::util::fixed_tempdir::FixedTempDir as TempDir;
 use crate::util::std_ext::ExitStatusExt;
 
@@ -68,9 +69,7 @@ pub fn exec(args: &[String]) -> anyhow::Result<()> {
         unpack_tarballs_of_deps(&resolve, &repo, package.package_id(), tempdir.path())?;
     }
 
-    // FIXME: this isn't actually any cheaper than doing a cargo install from scratch,
-    // so it kind-of defeats the point of using cargo-quickbuild.
-    crate::builder::command([
+    command([
         "cargo",
         "install",
         "--offline",

@@ -1,9 +1,7 @@
 use std::collections::BTreeMap;
-use std::ffi::OsStr;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
-use std::process::Command;
 
 use anyhow::Context;
 use anyhow::Result;
@@ -17,6 +15,7 @@ use crate::description::PackageDescription;
 use crate::quick_resolve::QuickResolve;
 use crate::repo::Repo;
 use crate::stats::Stats;
+use crate::util::command::command;
 use crate::util::fixed_tempdir::FixedTempDir as TempDir;
 use crate::util::std_ext::ExitStatusExt;
 
@@ -133,14 +132,4 @@ pub fn run_cargo_build(scratch_dir: &std::path::PathBuf) -> Result<()> {
     .exit_ok_ext()?;
 
     Ok(())
-}
-
-pub fn command(args: impl IntoIterator<Item = impl AsRef<OsStr>>) -> Command {
-    let mut args = args.into_iter();
-    let mut command = Command::new(
-        args.next()
-            .expect("command() takes command and args (at least one item)"),
-    );
-    command.args(args);
-    command
 }
