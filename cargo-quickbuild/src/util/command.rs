@@ -1,7 +1,6 @@
 use std::ffi::OsStr;
 use std::fs::File;
 use std::io::{Error, ErrorKind, Read, Write};
-use std::path::Path;
 use std::process::{Command, Stdio};
 use std::thread;
 
@@ -19,11 +18,7 @@ pub trait CommandExt {
     /// Execute Command and return a useful error if something went wrong.
     fn try_execute(&mut self) -> Result<(), Error>;
     /// Execute Command and tee stdout and stderr into files.
-    fn try_execute_tee(
-        &mut self,
-        stdout_filename: &Path,
-        stderr_filename: &Path,
-    ) -> Result<(), Error>;
+    fn try_execute_tee(&mut self, stdout_file: File, stderr_file: File) -> Result<(), Error>;
 }
 
 impl CommandExt for Command {
@@ -41,14 +36,7 @@ impl CommandExt for Command {
         }
     }
 
-    fn try_execute_tee(
-        &mut self,
-        stdout_filename: &Path,
-        stderr_filename: &Path,
-    ) -> Result<(), Error> {
-        let stdout_file = File::create(stdout_filename)?;
-        let stderr_file = File::create(stderr_filename)?;
-
+    fn try_execute_tee(&mut self, stdout_file: File, stderr_file: File) -> Result<(), Error> {
         let mut child = self
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())

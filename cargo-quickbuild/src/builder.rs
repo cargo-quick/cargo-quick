@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
@@ -42,7 +43,11 @@ pub fn build_tarball<'cfg, 'a>(
     let description = PackageDescription::new(resolve, package_id);
     add_deps_to_manifest(&scratch_dir, &description)?;
 
-    run_cargo_build(&scratch_dir)?;
+    run_cargo_build(
+        &scratch_dir,
+        repo.write_stdout(&description)?,
+        repo.write_stderr(&description)?,
+    )?;
     stats.build_done();
 
     let description = PackageDescription::new(resolve, package_id);
@@ -104,14 +109,14 @@ fn add_deps_to_manifest(
     Ok(())
 }
 
-pub fn run_cargo_build(scratch_dir: &std::path::PathBuf) -> Result<()> {
+pub fn run_cargo_build(scratch_dir: &std::path::PathBuf, stdout: File, stderr: File) -> Result<()> {
     command([
         "/Users/alsuren/src/cargo/target/release/cargo",
         "build",
         "--jobs=1",
     ])
     .current_dir(scratch_dir)
-    .try_execute()?;
+    .try_execute_tee(stdout, stderr)?;
 
     command([
         "cargo",

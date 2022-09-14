@@ -35,12 +35,24 @@ impl Repo {
     }
 
     pub fn write(&self, package: &PackageDescription) -> std::io::Result<File> {
-        let temp_tarball_path = self.tarball_path(package).with_extension("temp.tar");
+        self.write_suffix(package, "temp.tar")
+    }
+
+    pub fn write_stdout(&self, package: &PackageDescription) -> std::io::Result<File> {
+        self.write_suffix(package, "stdout")
+    }
+
+    pub fn write_stderr(&self, package: &PackageDescription) -> std::io::Result<File> {
+        self.write_suffix(package, "stderr")
+    }
+
+    fn write_suffix(&self, package: &PackageDescription, suffix: &str) -> std::io::Result<File> {
+        let path = self.tarball_path(package).with_extension(suffix);
         File::options()
             .write(true)
             .create(true)
             .truncate(true)
-            .open(temp_tarball_path)
+            .open(path)
     }
 
     pub fn commit(&self, package: &PackageDescription, stats: Stats) -> std::io::Result<()> {
