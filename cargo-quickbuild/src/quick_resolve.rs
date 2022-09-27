@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 
@@ -5,6 +6,7 @@ use anyhow::Result;
 use cargo::core::compiler::RustcTargetData;
 
 use cargo::core::dependency::DepKind;
+use cargo::core::resolver::features::FeaturesFor;
 use cargo::core::Package;
 use cargo::core::{PackageId, Workspace};
 use cargo::ops::WorkspaceResolve;
@@ -14,6 +16,30 @@ use itertools::Itertools;
 
 use crate::vendor::tree::graph::Graph;
 use crate::vendor::tree::{Charset, EdgeKind, Prefix, Target, TreeOptions};
+
+// FIXME: can we use the DepKind enum instead, and write an extension method to convert it to FeaturesFor just-in-time?
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct BuildFor(pub FeaturesFor);
+
+impl Eq for BuildFor {}
+
+// Arbitrarily impl Ord so that I can put it in a BTreeMap
+impl PartialOrd for BuildFor {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(match (self.0, other.0) {
+            (FeaturesFor::HostDep, FeaturesFor::HostDep) => Ordering::Equal,
+            (FeaturesFor::NormalOrDev, FeaturesFor::NormalOrDev) => Ordering::Equal,
+            (FeaturesFor::NormalOrDev, FeaturesFor::HostDep) => Ordering::Less,
+            (FeaturesFor::HostDep, FeaturesFor::NormalOrDev) => Ordering::Greater,
+        })
+    }
+}
+impl Ord for BuildFor {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
 
 /// A wrapper around the cargo core resolve machinery, to make cargo-quickbuild work.
 /// Probably won't be all that quick ;-)
@@ -27,34 +53,74 @@ where
 }
 
 impl<'cfg, 'a> QuickResolve<'cfg, 'a> {
-    pub fn recursive_deps_including_self(&self, package_id: PackageId) -> BTreeSet<PackageId> {
+    pub fn recursive_deps_including_self(
+        &self,
+        package_id: PackageId,
+        build_for: BuildFor,
+    ) -> BTreeSet<(PackageId, BuildFor)> {
         let kinds = &[DepKind::Normal, DepKind::Build];
 
-        let mut deps = self._recursive_deps(package_id, kinds);
-        deps.insert(package_id);
+        let mut deps = self._recursive_deps(package_id, kinds, build_for);
+        deps.insert((package_id, build_for));
         deps
     }
 
-    pub fn recursive_build_deps(&self, package_id: PackageId) -> BTreeSet<PackageId> {
+    // FIXME: I'm pretty sure we can kill this off soon.
+    pub fn recursive_build_deps(&self, package_id: PackageId) -> BTreeSet<(PackageId, BuildFor)> {
         let kinds = &[DepKind::Build];
 
-        self._recursive_deps(package_id, kinds)
+        self._recursive_deps(package_id, kinds, BuildFor(FeaturesFor::HostDep))
     }
 
-    fn _recursive_deps(&self, package_id: PackageId, kinds: &[DepKind]) -> BTreeSet<PackageId> {
-        let mut deps: BTreeSet<PackageId> = Default::default();
+    fn _recursive_deps(
+        &self,
+        package_id: PackageId,
+        kinds: &[DepKind],
+        build_for: BuildFor,
+    ) -> BTreeSet<(PackageId, BuildFor)> {
+        let mut deps: BTreeSet<(PackageId, BuildFor)> = Default::default();
 
-        let mut indexes = self.graph.indexes_from_ids(&[package_id]);
+        let mut indexes = self
+            .graph
+            .indexes_from_ids(&[package_id])
+            .into_iter()
+            .map(|idx| (idx, build_for))
+            .collect_vec();
         loop {
             let layer = {
-                let mut layer: BTreeSet<PackageId> = Default::default();
-                for node_index in indexes {
+                let mut layer: BTreeSet<(PackageId, BuildFor)> = Default::default();
+                for (node_index, build_for) in indexes {
                     for kind in kinds {
+                        // TODO: write a test asserting that proc macro crates have no NormalOrDev deps, even if included in a tree that has them.
                         let deps = self
                             .graph
                             .connected_nodes(node_index, &EdgeKind::Dep(*kind));
                         for idx in deps {
-                            layer.insert(self.graph.package_id_for_index(idx));
+                            match (build_for.0, kind) {
+                                (FeaturesFor::NormalOrDev, DepKind::Normal) => {
+                                    layer.insert((
+                                        self.graph.package_id_for_index(idx),
+                                        BuildFor(FeaturesFor::NormalOrDev),
+                                    ));
+                                }
+                                (FeaturesFor::NormalOrDev, DepKind::Development) => {
+                                    todo!("I don't think we want to support Development dependencies yet");
+                                }
+                                // build dep links turns all children into build deps
+                                (FeaturesFor::NormalOrDev, DepKind::Build) => {
+                                    layer.insert((
+                                        self.graph.package_id_for_index(idx),
+                                        BuildFor(FeaturesFor::HostDep),
+                                    ));
+                                }
+                                // once a HostDep, always a HostDep
+                                (FeaturesFor::HostDep, _) => {
+                                    layer.insert((
+                                        self.graph.package_id_for_index(idx),
+                                        BuildFor(FeaturesFor::HostDep),
+                                    ));
+                                }
+                            }
                         }
                     }
                 }
@@ -64,9 +130,17 @@ impl<'cfg, 'a> QuickResolve<'cfg, 'a> {
             if layer.is_empty() {
                 break;
             }
-            indexes = self
-                .graph
-                .indexes_from_ids(&layer.iter().copied().collect_vec());
+            indexes = layer
+                .iter()
+                .map(|(package_id, build_for)| {
+                    self.graph
+                        .indexes_from_ids(&[*package_id])
+                        .into_iter()
+                        .map(|idx| (idx, *build_for))
+                        .collect_vec()
+                })
+                .flatten()
+                .collect_vec();
             deps.extend(layer);
         }
         deps
@@ -341,11 +415,18 @@ mod tests {
         root_package
     }
 
-    fn package_names(packages_to_build: &BTreeSet<PackageId>) -> Vec<InternedString> {
-        packages_to_build.iter().map(|dep| dep.name()).collect_vec()
+    fn package_names(packages_to_build: &BTreeSet<(PackageId, BuildFor)>) -> Vec<InternedString> {
+        packages_to_build
+            .iter()
+            .map(|(dep, _)| dep.name())
+            .dedup()
+            .collect_vec()
     }
 
     fn dep_names_for_package(resolve: &QuickResolve, name: &str) -> Vec<InternedString> {
-        package_names(&resolve.recursive_deps_including_self(package_by_name(resolve, name)))
+        package_names(&resolve.recursive_deps_including_self(
+            package_by_name(resolve, name),
+            BuildFor(FeaturesFor::NormalOrDev),
+        ))
     }
 }

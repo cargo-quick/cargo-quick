@@ -3,12 +3,13 @@
 use std::path::{Path, PathBuf};
 
 use cargo::core::compiler::{CompileMode, UnitInterner};
+use cargo::core::resolver::features::FeaturesFor;
 use cargo::core::Workspace;
 use cargo::ops::CompileOptions;
 use cargo::Config;
 
 use crate::builder::unpack_tarballs_of_deps;
-use crate::quick_resolve::create_quick_resolve;
+use crate::quick_resolve::{create_quick_resolve, BuildFor};
 use crate::repo::Repo;
 use crate::resolve::create_resolve;
 use crate::scheduler::build_missing_packages;
@@ -58,7 +59,14 @@ pub fn exec(args: &[String]) -> anyhow::Result<()> {
         "please remove your target dir before continuing"
     );
 
-    unpack_tarballs_of_deps(&resolve, &repo, root_package, &repo_root)?;
+    unpack_tarballs_of_deps(
+        &resolve,
+        &repo,
+        root_package,
+        // FIXME: assert that we've not been asked to build a proc-macro crate.
+        BuildFor(FeaturesFor::NormalOrDev),
+        &repo_root,
+    )?;
 
     command(["cargo", "build"])
         .current_dir(&here)

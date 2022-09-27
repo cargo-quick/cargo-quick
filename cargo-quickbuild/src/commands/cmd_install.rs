@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use anyhow::bail;
 use cargo::core::compiler::{CompileMode, UnitInterner};
+use cargo::core::resolver::features::FeaturesFor;
 use cargo::core::{Dependency, Package, PackageId, Source, SourceId, Workspace};
 use cargo::ops::CompileOptions;
 use cargo::sources::SourceConfigMap;
@@ -9,7 +10,7 @@ use cargo::util::Filesystem;
 use cargo::{CargoResult, Config};
 
 use crate::builder::unpack_tarballs_of_deps;
-use crate::quick_resolve::create_quick_resolve;
+use crate::quick_resolve::{create_quick_resolve, BuildFor};
 use crate::repo::Repo;
 use crate::resolve::create_resolve;
 use crate::scheduler::build_missing_packages;
@@ -65,7 +66,13 @@ pub fn exec(args: &[String]) -> anyhow::Result<()> {
         let repo = Repo::from_env();
         build_missing_packages(&resolve, &repo, package.package_id())?;
 
-        unpack_tarballs_of_deps(&resolve, &repo, package.package_id(), tempdir.path())?;
+        unpack_tarballs_of_deps(
+            &resolve,
+            &repo,
+            package.package_id(),
+            BuildFor(FeaturesFor::NormalOrDev),
+            tempdir.path(),
+        )?;
     }
 
     command([

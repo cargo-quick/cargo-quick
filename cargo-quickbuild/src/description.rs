@@ -6,6 +6,7 @@ use crypto_hash::Algorithm;
 
 use cargo::core::PackageId;
 
+use crate::quick_resolve::BuildFor;
 use crate::quick_resolve::QuickResolve;
 
 /// A self-contained description of a package build configuration
@@ -15,8 +16,12 @@ pub struct PackageDescription {
 }
 
 impl PackageDescription {
-    pub fn new<'cfg>(resolve: &QuickResolve<'cfg, '_>, package_id: PackageId) -> Self {
-        let cargo_toml_deps = packages_to_cargo_toml_deps(resolve, package_id);
+    pub fn new<'cfg>(
+        resolve: &QuickResolve<'cfg, '_>,
+        package_id: PackageId,
+        build_for: BuildFor,
+    ) -> Self {
+        let cargo_toml_deps = packages_to_cargo_toml_contents(resolve, package_id, build_for);
         Self {
             package_id,
             cargo_toml_deps,
@@ -43,19 +48,30 @@ impl core::fmt::Debug for PackageDescription {
     }
 }
 
-fn packages_to_cargo_toml_deps<'cfg>(
+/// Generate the contents of a Cargo.toml file that can be used for building this package.
+///
+/// host_dep should be set to `true` if the dependency is a build dep or a proc-macro crate.
+/// Same logic as the bool in `type ActivateMap = HashMap<(PackageId, bool), ...>;`
+/// from cargo::core::resolver::features.
+fn packages_to_cargo_toml_contents<'cfg>(
     resolve: &QuickResolve<'cfg, '_>,
     package_id: PackageId,
+    build_for: BuildFor,
 ) -> String {
     let mut deps_string = String::new();
     writeln!(
         deps_string,
-        "# {} {}",
+        "[package]\n\
+        name = \"cargo-quickbuild-scratchpad\"\n\
+        version = \"0.1.0\"\n\
+        edition = \"2021\"\n\
+        \n\
+        # {} {}",
         package_id.name(),
         package_id.version()
     )
     .unwrap();
-    let deps = resolve.recursive_deps_including_self(package_id);
+    let deps = resolve.recursive_deps_including_self(package_id, build_for);
     let build_deps = resolve.recursive_build_deps(package_id);
 
     format!(
@@ -70,9 +86,9 @@ fn packages_to_cargo_toml_deps<'cfg>(
     )
 }
 
-fn deps_to_string(resolve: &QuickResolve, deps: BTreeSet<PackageId>) -> String {
+fn deps_to_string(resolve: &QuickResolve, deps: BTreeSet<(PackageId, BuildFor)>) -> String {
     deps.into_iter()
-    .map(|package_id| {
+    .map(|(package_id, _build_for)| {
         let name = package_id.name();
         let version = package_id.version().to_string();
         let features = resolve.workspace_resolve.targeted_resolve.features(package_id);

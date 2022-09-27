@@ -13,6 +13,7 @@ use tar::Archive;
 use crate::archive::tar_target_dir;
 use crate::archive::tracked_unpack;
 use crate::description::PackageDescription;
+use crate::quick_resolve::BuildFor;
 use crate::quick_resolve::QuickResolve;
 use crate::repo::Repo;
 use crate::stats::Stats;
@@ -24,6 +25,7 @@ pub fn build_tarball<'cfg, 'a>(
     resolve: &QuickResolve<'cfg, 'a>,
     repo: &Repo,
     package_id: PackageId,
+    build_for: BuildFor,
 ) -> Result<()> {
     let tempdir = TempDir::new("cargo-quickbuild-scratchpad")?;
     assert!(tempdir.path().ends_with("cargo-quickbuild-scratchpad"));
@@ -37,11 +39,12 @@ pub fn build_tarball<'cfg, 'a>(
     cargo_init(&scratch_dir)?;
     stats.init_done();
 
-    let file_timestamps = unpack_tarballs_of_deps(resolve, repo, package_id, &scratch_dir)?;
+    let file_timestamps =
+        unpack_tarballs_of_deps(resolve, repo, package_id, build_for, &scratch_dir)?;
     stats.untar_done();
 
-    let description = PackageDescription::new(resolve, package_id);
-    add_deps_to_manifest(&scratch_dir, &description)?;
+    let description = PackageDescription::new(resolve, package_id, build_for);
+    overwrite_manifest(&scratch_dir, &description)?;
 
     run_cargo_build(
         &scratch_dir,
@@ -50,7 +53,7 @@ pub fn build_tarball<'cfg, 'a>(
     )?;
     stats.build_done();
 
-    let description = PackageDescription::new(resolve, package_id);
+    let description = PackageDescription::new(resolve, package_id, build_for);
     let file = repo.write(&description)?;
     tar_target_dir(scratch_dir, file, &file_timestamps)?;
     stats.tar_done();
@@ -72,15 +75,16 @@ pub fn unpack_tarballs_of_deps<'cfg, 'a>(
     resolve: &QuickResolve<'cfg, 'a>,
     repo: &Repo,
     package_id: PackageId,
+    build_for: BuildFor,
     scratch_dir: &Path,
 ) -> Result<BTreeMap<PathBuf, FileTime>> {
     let mut file_timestamps = BTreeMap::default();
-    for dep in resolve
-        .recursive_deps_including_self(package_id)
+    for (dep, build_for) in resolve
+        .recursive_deps_including_self(package_id, build_for)
         .into_iter()
-        .filter(|id| id != &package_id)
+        .filter(|(id, _)| id != &package_id)
     {
-        let description = PackageDescription::new(resolve, dep);
+        let description = PackageDescription::new(resolve, dep, build_for);
         let file = repo
             .read(&description)
             .with_context(|| format!("reading description {description:?} for {package_id:?}"))?;
@@ -94,14 +98,14 @@ pub fn unpack_tarballs_of_deps<'cfg, 'a>(
     Ok(file_timestamps)
 }
 
-fn add_deps_to_manifest(
+fn overwrite_manifest(
     scratch_dir: &Path,
     description: &PackageDescription,
 ) -> Result<(), anyhow::Error> {
     let cargo_toml_path = scratch_dir.join("Cargo.toml");
     let mut cargo_toml = std::fs::OpenOptions::new()
         .write(true)
-        .append(true)
+        .truncate(true)
         .open(&cargo_toml_path)?;
     write!(cargo_toml, "{}", description.cargo_toml_deps())?;
     cargo_toml.flush()?;
