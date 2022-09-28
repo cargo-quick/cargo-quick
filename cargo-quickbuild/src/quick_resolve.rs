@@ -56,12 +56,12 @@ impl<'cfg, 'a> QuickResolve<'cfg, 'a> {
     pub fn recursive_deps_including_self(
         &self,
         package_id: PackageId,
-        build_for: BuildFor,
+        initial_build_for: BuildFor,
     ) -> BTreeSet<(PackageId, BuildFor)> {
         let kinds = &[DepKind::Normal, DepKind::Build];
 
-        let mut deps = self._recursive_deps(package_id, kinds, build_for);
-        deps.insert((package_id, build_for));
+        let mut deps = self._recursive_deps(package_id, kinds, initial_build_for);
+        deps.insert((package_id, initial_build_for));
         deps
     }
 
@@ -76,7 +76,7 @@ impl<'cfg, 'a> QuickResolve<'cfg, 'a> {
         &self,
         package_id: PackageId,
         kinds: &[DepKind],
-        build_for: BuildFor,
+        initial_build_for: BuildFor,
     ) -> BTreeSet<(PackageId, BuildFor)> {
         let mut deps: BTreeSet<(PackageId, BuildFor)> = Default::default();
 
@@ -84,7 +84,7 @@ impl<'cfg, 'a> QuickResolve<'cfg, 'a> {
             .graph
             .indexes_from_ids(&[package_id])
             .into_iter()
-            .map(|idx| (idx, build_for))
+            .map(|idx| (idx, initial_build_for))
             .collect_vec();
         loop {
             let layer = {
@@ -283,7 +283,7 @@ mod tests {
             graph,
         };
 
-        assert_eq!(dep_names_for_package(&resolve, "libc"), &["libc"]);
+        assert_eq!(target_dep_names_for_package(&resolve, "libc"), &["libc"]);
         // $ cargo tree --no-dedupe --edges=all -p jobserver
         // jobserver v0.1.24
         // └── libc feature "default"
@@ -291,11 +291,11 @@ mod tests {
         //     └── libc feature "std"
         //         └── libc v0.2.125
         assert_eq!(
-            dep_names_for_package(&resolve, "jobserver"),
+            target_dep_names_for_package(&resolve, "jobserver"),
             &["jobserver", "libc"]
         );
         assert_eq!(
-            dep_names_for_package(&resolve, "cc"),
+            target_dep_names_for_package(&resolve, "cc"),
             &["cc", "jobserver", "libc"]
         );
         // $ cargo tree --no-dedupe --edges=all -p libz-sys
@@ -316,8 +316,12 @@ mod tests {
         // └── pkg-config feature "default"
         //     └── pkg-config v0.3.25
         assert_eq!(
-            dep_names_for_package(&resolve, "libz-sys"),
-            &["cc", "jobserver", "libc", "libz-sys", "pkg-config"]
+            target_dep_names_for_package(&resolve, "libz-sys"),
+            &["libc", "libz-sys"]
+        );
+        assert_eq!(
+            build_dep_names_for_package(&resolve, "libz-sys"),
+            &["cc", "jobserver", "libc", "pkg-config"]
         );
         // $ cargo tree --no-dedupe --edges=all -p libnghttp2-sys
         // libnghttp2-sys v0.1.7+1.45.0
@@ -335,8 +339,12 @@ mod tests {
         //                     └── libc feature "std"
         //                         └── libc v0.2.125
         assert_eq!(
-            dep_names_for_package(&resolve, "libnghttp2-sys"),
-            &["cc", "jobserver", "libc", "libnghttp2-sys"]
+            target_dep_names_for_package(&resolve, "libnghttp2-sys"),
+            &["libc", "libnghttp2-sys"]
+        );
+        assert_eq!(
+            build_dep_names_for_package(&resolve, "libnghttp2-sys"),
+            &["cc", "jobserver", "libc"]
         );
         // cargo tree --no-dedupe --edges=all -p curl-sys
         // curl-sys v0.4.55+curl-7.83.1
@@ -388,16 +396,12 @@ mod tests {
         // └── pkg-config feature "default"
         //     └── pkg-config v0.3.25
         assert_eq!(
-            dep_names_for_package(&resolve, "curl-sys"),
-            &[
-                "cc",
-                "curl-sys",
-                "jobserver",
-                "libc",
-                "libnghttp2-sys",
-                "libz-sys",
-                "pkg-config"
-            ]
+            target_dep_names_for_package(&resolve, "curl-sys"),
+            &["curl-sys", "libc", "libnghttp2-sys", "libz-sys"]
+        );
+        assert_eq!(
+            build_dep_names_for_package(&resolve, "curl-sys"),
+            &["cc", "jobserver", "libc", "pkg-config"]
         );
 
         Ok(())
@@ -415,18 +419,38 @@ mod tests {
         root_package
     }
 
-    fn package_names(packages_to_build: &BTreeSet<(PackageId, BuildFor)>) -> Vec<InternedString> {
+    fn package_names_matching(
+        packages_to_build: &BTreeSet<(PackageId, BuildFor)>,
+        filter: BuildFor,
+    ) -> Vec<InternedString> {
         packages_to_build
             .iter()
+            .filter(|(_, build_for)| build_for == &filter)
             .map(|(dep, _)| dep.name())
-            .dedup()
+            // .dedup()
             .collect_vec()
     }
 
-    fn dep_names_for_package(resolve: &QuickResolve, name: &str) -> Vec<InternedString> {
-        package_names(&resolve.recursive_deps_including_self(
-            package_by_name(resolve, name),
+    fn target_dep_names_for_package(resolve: &QuickResolve, name: &str) -> Vec<InternedString> {
+        package_names_matching(
+            &resolve.recursive_deps_including_self(
+                package_by_name(resolve, name),
+                BuildFor(FeaturesFor::NormalOrDev),
+            ),
             BuildFor(FeaturesFor::NormalOrDev),
-        ))
+        )
+    }
+
+    fn build_dep_names_for_package(resolve: &QuickResolve, name: &str) -> Vec<InternedString> {
+        package_names_matching(
+            &resolve.recursive_deps_including_self(
+                package_by_name(resolve, name),
+                // It feels wrong that we have to specify this, but I think we have to,
+                // because it represents the synthetic "self" dep, and also affects the colour
+                // of all child dependencies in the tree.
+                BuildFor(FeaturesFor::NormalOrDev),
+            ),
+            BuildFor(FeaturesFor::HostDep),
+        )
     }
 }
