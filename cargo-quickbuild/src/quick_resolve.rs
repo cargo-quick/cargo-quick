@@ -65,13 +65,6 @@ impl<'cfg, 'a> QuickResolve<'cfg, 'a> {
         deps
     }
 
-    // FIXME: I'm pretty sure we can kill this off soon.
-    pub fn recursive_build_deps(&self, package_id: PackageId) -> BTreeSet<(PackageId, BuildFor)> {
-        let kinds = &[DepKind::Build];
-
-        self._recursive_deps(package_id, kinds, BuildFor(FeaturesFor::HostDep))
-    }
-
     fn _recursive_deps(
         &self,
         initial_package_id: PackageId,

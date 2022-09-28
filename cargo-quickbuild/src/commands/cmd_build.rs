@@ -1,5 +1,6 @@
 // I am allergic to files named build.rs that aren't build scripts. They bring me out in a rash.
 
+use std::fs::File;
 use std::path::{Path, PathBuf};
 
 use cargo::core::compiler::{CompileMode, UnitInterner};
@@ -68,9 +69,19 @@ pub fn exec(args: &[String]) -> anyhow::Result<()> {
         &repo_root,
     )?;
 
+    let stdout_file = File::options()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open("/Users/alsuren/tmp/quick/cargo-build.stdout")?;
+    let stderr_file = File::options()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open("/Users/alsuren/tmp/quick/cargo-build.stderr")?;
     command(["cargo", "build"])
         .current_dir(&here)
-        .try_execute()?;
+        .try_execute_tee(stdout_file, stderr_file)?;
 
     Ok(())
 }

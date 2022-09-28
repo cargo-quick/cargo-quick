@@ -1,6 +1,4 @@
-use std::collections::BTreeSet;
-use std::fmt::Write as _;
-
+use cargo::core::resolver::features::FeaturesFor;
 use crypto_hash::hex_digest;
 use crypto_hash::Algorithm;
 
@@ -49,45 +47,49 @@ impl core::fmt::Debug for PackageDescription {
 }
 
 /// Generate the contents of a Cargo.toml file that can be used for building this package.
-///
-/// host_dep should be set to `true` if the dependency is a build dep or a proc-macro crate.
-/// Same logic as the bool in `type ActivateMap = HashMap<(PackageId, bool), ...>;`
-/// from cargo::core::resolver::features.
 fn packages_to_cargo_toml_contents<'cfg>(
     resolve: &QuickResolve<'cfg, '_>,
     package_id: PackageId,
     build_for: BuildFor,
 ) -> String {
-    let mut deps_string = String::new();
-    writeln!(
-        deps_string,
-        "[package]\n\
+    let name = package_id.name();
+    let version = package_id.version();
+    let deps = resolve.recursive_deps_including_self(package_id, build_for);
+    let target_deps = deps_to_string(
+        resolve,
+        deps.iter()
+            .filter(|(_, build_for)| build_for.0 == FeaturesFor::NormalOrDev)
+            .copied(),
+    );
+    let build_deps = deps_to_string(
+        resolve,
+        deps.iter()
+            .filter(|(_, build_for)| build_for.0 == FeaturesFor::HostDep)
+            .copied(),
+    );
+
+    format!(
+        "# {name} {version}\n\
+        \n\
+        [package]\n\
         name = \"cargo-quickbuild-scratchpad\"\n\
         version = \"0.1.0\"\n\
         edition = \"2021\"\n\
         \n\
-        # {} {}",
-        package_id.name(),
-        package_id.version()
-    )
-    .unwrap();
-    let deps = resolve.recursive_deps_including_self(package_id, build_for);
-    let build_deps = resolve.recursive_build_deps(package_id);
-
-    format!(
-        "# {name} {version}\n\
-        {deps}\n\
+        [dependencies]\n\
+        {target_deps}\n\
+        \n\
         [build-dependencies]\n\
-        {build_deps}",
-        name = package_id.name(),
-        version = package_id.version(),
-        deps = deps_to_string(resolve, deps),
-        build_deps = deps_to_string(resolve, build_deps)
+        {build_deps}\n\
+        ",
     )
 }
 
-fn deps_to_string(resolve: &QuickResolve, deps: BTreeSet<(PackageId, BuildFor)>) -> String {
-    deps.into_iter()
+fn deps_to_string(
+    resolve: &QuickResolve,
+    deps: impl Iterator<Item = (PackageId, BuildFor)>,
+) -> String {
+    deps
     .map(|(package_id, _build_for)| {
         let name = package_id.name();
         let version = package_id.version().to_string();

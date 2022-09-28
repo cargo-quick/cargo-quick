@@ -64,16 +64,20 @@ syn_1_0_94 = { package = "syn", version = "=1.0.94", features = ["extra-traits"]
 ' >> ~/tmp/syn-minimal-repro/Cargo.toml
     \in ~/tmp/syn-minimal-repro/ cargo tree --edges=all
 
-    for package in thiserror-impl serde_derive; do
+    # for package in thiserror-impl serde_derive; do
         rm -rf ~/tmp/syn-minimal-repro/target/
-        rm -rf ~/tmp/quick/$package*.tar
+        rm -rf ~/tmp/quick/*.tar
+        rm -rf ~/tmp/quick/*.stdout
+        rm -rf ~/tmp/quick/*.stderr
+        # rm -rf ~/tmp/quick/$package*.tar
         # rm -f ~/tmp/$package.log
 
         # CARGO_LOG=cargo::core::compiler::fingerprint=trace \
         CARGO_LOG=cargo::core::compiler::unit_dependencies=warn,cargo::core::compiler::job_queue=warn,cargo=trace \
-            cargo quickbuild build  || true # 2>&1 | sed 's/^[[]2022[^ ]*//' > ~/tmp/$package.log || true
-    done
+            cargo quickbuild build # || true # 2>&1 | sed 's/^[[]2022[^ ]*//' > ~/tmp/$package.log || true
+    # done
 
     sed -i '' 's/^[[]2022[^ ]*//' ~/tmp/quick/*.stderr
-    code --diff ~/tmp/quick/syn*.stderr ~/tmp/quick/serde_derive*.stderr
+    # code --diff ~/tmp/quick/syn-1*.stderr ~/tmp/quick/serde_derive-1*.stderr
+    code --diff ~/tmp/quick/thiserror-impl-1*.stderr ~/tmp/quick/cargo-build.stderr
 )
