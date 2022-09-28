@@ -74,7 +74,7 @@ impl<'cfg, 'a> QuickResolve<'cfg, 'a> {
 
     fn _recursive_deps(
         &self,
-        package_id: PackageId,
+        initial_package_id: PackageId,
         kinds: &[DepKind],
         initial_build_for: BuildFor,
     ) -> BTreeSet<(PackageId, BuildFor)> {
@@ -82,7 +82,7 @@ impl<'cfg, 'a> QuickResolve<'cfg, 'a> {
 
         let mut indexes = self
             .graph
-            .indexes_from_ids(&[package_id])
+            .indexes_from_ids(&[initial_package_id])
             .into_iter()
             .map(|idx| (idx, initial_build_for))
             .collect_vec();
@@ -96,31 +96,27 @@ impl<'cfg, 'a> QuickResolve<'cfg, 'a> {
                             .graph
                             .connected_nodes(node_index, &EdgeKind::Dep(*kind));
                         for idx in deps {
-                            match (build_for.0, kind) {
+                            let package_id = self.graph.package_id_for_index(idx);
+                            let new_build_for = match (build_for.0, kind) {
                                 (FeaturesFor::NormalOrDev, DepKind::Normal) => {
-                                    layer.insert((
-                                        self.graph.package_id_for_index(idx),
-                                        BuildFor(FeaturesFor::NormalOrDev),
-                                    ));
+                                    let package = self.graph.package_for_id(package_id);
+                                    if package.proc_macro() {
+                                        BuildFor(FeaturesFor::HostDep)
+                                    } else {
+                                        BuildFor(FeaturesFor::NormalOrDev)
+                                    }
                                 }
                                 (FeaturesFor::NormalOrDev, DepKind::Development) => {
                                     todo!("I don't think we want to support Development dependencies yet");
                                 }
                                 // build dep links turns all children into build deps
                                 (FeaturesFor::NormalOrDev, DepKind::Build) => {
-                                    layer.insert((
-                                        self.graph.package_id_for_index(idx),
-                                        BuildFor(FeaturesFor::HostDep),
-                                    ));
+                                    BuildFor(FeaturesFor::HostDep)
                                 }
                                 // once a HostDep, always a HostDep
-                                (FeaturesFor::HostDep, _) => {
-                                    layer.insert((
-                                        self.graph.package_id_for_index(idx),
-                                        BuildFor(FeaturesFor::HostDep),
-                                    ));
-                                }
-                            }
+                                (FeaturesFor::HostDep, _) => BuildFor(FeaturesFor::HostDep),
+                            };
+                            layer.insert((package_id, new_build_for));
                         }
                     }
                 }
@@ -402,6 +398,53 @@ mod tests {
         assert_eq!(
             build_dep_names_for_package(&resolve, "curl-sys"),
             &["cc", "jobserver", "libc", "pkg-config"]
+        );
+
+        // vte depends on vte_generate_state_changes which is a proc-macro crate
+        // $ cargo tree --no-dedupe --edges=all -p vte
+        // vte v0.10.1
+        // ├── arrayvec v0.5.2
+        // ├── utf8parse feature "default"
+        // │   └── utf8parse v0.2.0
+        // └── vte_generate_state_changes feature "default"
+        //     └── vte_generate_state_changes v0.1.1 (proc-macro)
+        //         ├── proc-macro2 feature "default"
+        //         │   ├── proc-macro2 v1.0.38
+        //         │   │   └── unicode-xid feature "default"
+        //         │   │       └── unicode-xid v0.2.3
+        //         │   └── proc-macro2 feature "proc-macro"
+        //         │       └── proc-macro2 v1.0.38
+        //         │           └── unicode-xid feature "default"
+        //         │               └── unicode-xid v0.2.3
+        //         └── quote feature "default"
+        //             ├── quote v1.0.18
+        //             │   └── proc-macro2 v1.0.38
+        //             │       └── unicode-xid feature "default"
+        //             │           └── unicode-xid v0.2.3
+        //             └── quote feature "proc-macro"
+        //                 ├── quote v1.0.18
+        //                 │   └── proc-macro2 v1.0.38
+        //                 │       └── unicode-xid feature "default"
+        //                 │           └── unicode-xid v0.2.3
+        //                 └── proc-macro2 feature "proc-macro"
+        //                     └── proc-macro2 v1.0.38
+        //                         └── unicode-xid feature "default"
+        //                             └── unicode-xid v0.2.3
+
+        assert_eq!(
+            target_dep_names_for_package(&resolve, "vte"),
+            &["arrayvec", "utf8parse", "vte"]
+        );
+        // The dep tree of vte_generate_state_changes should count as build deps because it's a proc-macro.
+        // TODO: confirm that it doesn't also need to be included as a target dep.
+        assert_eq!(
+            build_dep_names_for_package(&resolve, "vte"),
+            &[
+                "proc-macro2",
+                "quote",
+                "unicode-xid",
+                "vte_generate_state_changes"
+            ]
         );
 
         Ok(())

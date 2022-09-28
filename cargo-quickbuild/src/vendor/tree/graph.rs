@@ -137,6 +137,10 @@ impl<'a> Graph<'a> {
         result.into_iter().map(|(_node, i)| i).collect()
     }
 
+    pub fn package_for_id(&self, id: PackageId) -> &Package {
+        self.package_map[&id]
+    }
+
     pub fn package_id_for_index(&self, index: usize) -> PackageId {
         match self.nodes[index] {
             Node::Package { package_id, .. } => package_id,
