@@ -10,6 +10,7 @@ use crate::quick_resolve::QuickResolve;
 /// A self-contained description of a package build configuration
 pub struct PackageDescription {
     package_id: PackageId,
+    build_for: BuildFor,
     cargo_toml_deps: String,
 }
 
@@ -22,6 +23,7 @@ impl PackageDescription {
         let cargo_toml_deps = packages_to_cargo_toml_contents(resolve, package_id, build_for);
         Self {
             package_id,
+            build_for,
             cargo_toml_deps,
         }
     }
@@ -29,8 +31,12 @@ impl PackageDescription {
         let digest = hex_digest(Algorithm::SHA256, self.cargo_toml_deps.as_bytes());
         let package_name = self.package_id.name();
         let package_version = self.package_id.version();
+        let build_for = match self.build_for.0 {
+            FeaturesFor::NormalOrDev => "target",
+            FeaturesFor::HostDep => "host",
+        };
 
-        format!("{package_name}-{package_version}-{digest}")
+        format!("{package_name}-{package_version}-{build_for}-{digest}")
     }
     pub fn cargo_toml_deps(&self) -> &str {
         &self.cargo_toml_deps
