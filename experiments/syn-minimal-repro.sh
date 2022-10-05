@@ -2,6 +2,11 @@
 
 set -euxo pipefail
 
+if [ -f "$HOME/src/cargo/target/release/cargo" ]; then
+    PATH="$HOME/src/cargo/target/release/:$PATH"
+    export PATH
+fi
+
 cargo install --locked --path $HOME/src/cargo-quick/cargo-quickbuild
 
 # for crate in syn git-delta gitoxide probe-rs-cli pueue watchexec-cli xh ; do 
