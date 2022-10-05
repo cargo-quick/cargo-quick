@@ -114,13 +114,9 @@ fn overwrite_manifest(
 }
 
 pub fn run_cargo_build(scratch_dir: &std::path::PathBuf, stdout: File, stderr: File) -> Result<()> {
-    command([
-        "/Users/alsuren/src/cargo/target/release/cargo",
-        "build",
-        "--jobs=1",
-    ])
-    .current_dir(scratch_dir)
-    .try_execute_tee(stdout, stderr)?;
+    command(["cargo", "build", "--jobs=1"])
+        .current_dir(scratch_dir)
+        .try_execute_tee(stdout, stderr)?;
 
     command([
         "cargo",
