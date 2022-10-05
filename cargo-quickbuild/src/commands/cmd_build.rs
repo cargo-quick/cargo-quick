@@ -1,6 +1,5 @@
 // I am allergic to files named build.rs that aren't build scripts. They bring me out in a rash.
 
-use std::env::home_dir;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 
@@ -74,19 +73,23 @@ pub fn exec(args: &[String]) -> anyhow::Result<()> {
         .create(true)
         .write(true)
         .truncate(true)
-        .open(home_dir().unwrap().join("tmp/quick/cargo-build.stdout"))?;
+        .open(
+            home::home_dir()
+                .unwrap()
+                .join("tmp/quick/cargo-build.stdout"),
+        )?;
     let stderr_file = File::options()
         .create(true)
         .write(true)
         .truncate(true)
-        .open(home_dir().unwrap().join("tmp/quick/cargo-build.stderr")?;
-    command([
-        "cargo",
-        "build",
-        "--jobs=1",
-    ])
-    .current_dir(&here)
-    .try_execute_tee(stdout_file, stderr_file)?;
+        .open(
+            home::home_dir()
+                .unwrap()
+                .join("tmp/quick/cargo-build.stderr"),
+        )?;
+    command(["cargo", "build", "--jobs=1"])
+        .current_dir(&here)
+        .try_execute_tee(stdout_file, stderr_file)?;
 
     Ok(())
 }
