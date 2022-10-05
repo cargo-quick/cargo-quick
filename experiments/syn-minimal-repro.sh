@@ -67,10 +67,11 @@ syn_1_0_94 = { package = "syn", version = "=1.0.94", features = ["extra-traits"]
 
     # for package in thiserror-impl serde_derive; do
         rm -rf ~/tmp/syn-minimal-repro/target/
-        rm -rf ~/tmp/quick/*.tar
-        rm -rf ~/tmp/quick/*.stdout
-        rm -rf ~/tmp/quick/*.stderr
+        # rm -rf ~/tmp/quick/*.tar
+        # rm -rf ~/tmp/quick/*.stdout
+        # rm -rf ~/tmp/quick/*.stderr
         # rm -rf ~/tmp/quick/$package*.tar
+        rm -rf ~/tmp/quick/
         # rm -f ~/tmp/$package.log
 
         # CARGO_LOG=cargo::core::compiler::fingerprint=trace \
@@ -80,5 +81,5 @@ syn_1_0_94 = { package = "syn", version = "=1.0.94", features = ["extra-traits"]
 
     sed -i '' 's/^[[]2022[^ ]*//' ~/tmp/quick/*.stderr
     # code --diff ~/tmp/quick/syn-1*.stderr ~/tmp/quick/serde_derive-1*.stderr
-    code --diff ~/tmp/quick/thiserror-impl-1*.stderr ~/tmp/quick/cargo-build.stderr
+    code --diff ~/tmp/quick/serde_derive-1*.stderr ~/tmp/quick/cargo-build.stderr
 )
