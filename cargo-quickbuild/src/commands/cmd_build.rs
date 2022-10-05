@@ -79,9 +79,13 @@ pub fn exec(args: &[String]) -> anyhow::Result<()> {
         .write(true)
         .truncate(true)
         .open("/Users/alsuren/tmp/quick/cargo-build.stderr")?;
-    command(["cargo", "build", "--verbose"])
-        .current_dir(&here)
-        .try_execute_tee(stdout_file, stderr_file)?;
+    command([
+        "/Users/alsuren/src/cargo/target/release/cargo",
+        "build",
+        "--jobs=1",
+    ])
+    .current_dir(&here)
+    .try_execute_tee(stdout_file, stderr_file)?;
 
     Ok(())
 }
