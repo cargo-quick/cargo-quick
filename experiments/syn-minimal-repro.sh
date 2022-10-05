@@ -60,6 +60,7 @@ cargo quickbuild repo find target/debug/.fingerprint/syn-0d23c7d14ae11633/lib-sy
     # * unicode-ident is replaced with unicode-xid
     # * 
     echo '
+[build-dependencies]
 syn_1_0_94 = { package = "syn", version = "=1.0.94", features = ["extra-traits"], default-features = false }
 ' >> ~/tmp/syn-minimal-repro/Cargo.toml
     \in ~/tmp/syn-minimal-repro/ cargo tree --edges=all
