@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
@@ -85,6 +84,7 @@ pub fn unpack_tarballs_of_deps<'cfg, 'a>(
         .filter(|(id, _)| id != &package_id)
     {
         let description = PackageDescription::new(resolve, dep, build_for);
+        log::info!("unpacking tarball for {}", description.pretty_digest());
         let file = repo
             .read(&description)
             .with_context(|| format!("reading description {description:?} for {package_id:?}"))?;
@@ -113,7 +113,11 @@ fn overwrite_manifest(
     Ok(())
 }
 
-pub fn run_cargo_build(scratch_dir: &std::path::PathBuf, stdout: File, stderr: File) -> Result<()> {
+pub fn run_cargo_build(
+    scratch_dir: &std::path::PathBuf,
+    stdout: impl Write + Send,
+    stderr: impl Write + Send,
+) -> Result<()> {
     command(["cargo", "build", "--jobs=1"])
         .current_dir(scratch_dir)
         .try_execute_tee(stdout, stderr)?;

@@ -1,5 +1,4 @@
 use std::ffi::OsStr;
-use std::fs::File;
 use std::io::{Error, ErrorKind, Read, Write};
 use std::process::{Command, Stdio};
 use std::thread;
@@ -18,7 +17,11 @@ pub trait CommandExt {
     /// Execute Command and return a useful error if something went wrong.
     fn try_execute(&mut self) -> Result<(), Error>;
     /// Execute Command and tee stdout and stderr into files.
-    fn try_execute_tee(&mut self, stdout_file: File, stderr_file: File) -> Result<(), Error>;
+    fn try_execute_tee(
+        &mut self,
+        stdout_file: impl Write + Send,
+        stderr_file: impl Write + Send,
+    ) -> Result<(), Error>;
 }
 
 impl CommandExt for Command {
@@ -36,7 +39,11 @@ impl CommandExt for Command {
         }
     }
 
-    fn try_execute_tee(&mut self, stdout_file: File, stderr_file: File) -> Result<(), Error> {
+    fn try_execute_tee(
+        &mut self,
+        stdout_file: impl Write + Send,
+        stderr_file: impl Write + Send,
+    ) -> Result<(), Error> {
         let mut child = self
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -46,17 +53,16 @@ impl CommandExt for Command {
         let child_out = std::mem::take(&mut child.stdout).expect("cannot attach to child stdout");
         let child_err = std::mem::take(&mut child.stderr).expect("cannot attach to child stderr");
 
-        let thread_out = thread::spawn(move || {
-            communicate(child_out, stdout_file, std::io::stdout())
-                .expect("error communicating with child stdout")
+        thread::scope(move |s| {
+            s.spawn(|| {
+                communicate(child_out, stdout_file, std::io::stdout())
+                    .expect("error communicating with child stdout")
+            });
+            s.spawn(|| {
+                communicate(child_err, stderr_file, std::io::stderr())
+                    .expect("error communicating with child stderr")
+            });
         });
-        let thread_err = thread::spawn(move || {
-            communicate(child_err, stderr_file, std::io::stderr())
-                .expect("error communicating with child stderr")
-        });
-
-        thread_out.join().unwrap();
-        thread_err.join().unwrap();
 
         let ecode = child.wait().expect("failed to wait on child");
 
