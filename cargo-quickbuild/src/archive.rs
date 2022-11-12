@@ -112,38 +112,38 @@ pub fn tracked_unpack<R: Read>(
 
             insert_timestamp(&mut file_timestamps, &relative_path, mtime)?;
             if absolute_path.exists() {
-                let on_disk_mtime =
+                let mtime_from_disk =
                     FileTime::from_last_modification_time(&std::fs::metadata(&absolute_path)?);
-                if mtime != on_disk_mtime {
+                if mtime != mtime_from_disk {
                     // FIXME: make an extension trait for this conversion
                     let mtime =
                         chrono::NaiveDateTime::from_timestamp(mtime.seconds(), mtime.nanoseconds());
-                    let on_disk_mtime = chrono::NaiveDateTime::from_timestamp(
-                        on_disk_mtime.seconds(),
-                        on_disk_mtime.nanoseconds(),
+                    let mtime_from_disk = chrono::NaiveDateTime::from_timestamp(
+                        mtime_from_disk.seconds(),
+                        mtime_from_disk.nanoseconds(),
                     );
                     let now = chrono::Utc::now();
 
-                    let on_disk_contents = std::fs::read(&absolute_path)?;
-                    let mut from_tarball_contents = Vec::new();
-                    file.read_to_end(&mut from_tarball_contents)?;
+                    let contents_from_disk = std::fs::read(&absolute_path)?;
+                    let mut contents_from_tarball = Vec::new();
+                    file.read_to_end(&mut contents_from_tarball)?;
 
-                    let contents_differ_message = if on_disk_contents == from_tarball_contents {
+                    let contents_differ_message = if contents_from_disk == contents_from_tarball {
                         String::from("contents identical")
                     } else {
                         format!(
                             "contents differ:\n\
-                        on disk:\n{on_disk}\n\
+                        on disk:\n{from_disk}\n\
                         from tarball:\n{from_tarball}",
-                            on_disk = std::str::from_utf8(&on_disk_contents)
+                            from_disk = std::str::from_utf8(&contents_from_disk)
                                 .unwrap_or_else(|_| "<<binary file>>"),
-                            from_tarball = std::str::from_utf8(&from_tarball_contents)
+                            from_tarball = std::str::from_utf8(&contents_from_tarball)
                                 .unwrap_or_else(|_| "<<binary file>>"),
                         )
                     };
 
                     problem = format!(
-                        "{mtime} != {on_disk_mtime} for {relative_path:?} ({absolute_path:?}):\n\
+                        "{mtime} != {mtime_from_disk} for {relative_path:?} ({absolute_path:?}):\n\
                         (mtime != on_disk_mtime. now = {now})\n\
                         {contents_differ_message}",
                     );
