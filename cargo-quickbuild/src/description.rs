@@ -53,6 +53,9 @@ impl core::fmt::Debug for PackageDescription {
 }
 
 /// Generate the contents of a Cargo.toml file that can be used for building this package.
+///
+/// FIXME: this does not do the right thing for proc-macro crates currently, and I'm not sure how
+/// to fix it.
 fn packages_to_cargo_toml_contents<'cfg>(
     resolve: &QuickResolve<'cfg, '_>,
     package_id: PackageId,
