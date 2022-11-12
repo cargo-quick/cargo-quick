@@ -79,12 +79,15 @@ syn_1_0_94 = { package = "syn", version = "=1.0.94", features = ["extra-traits"]
         rm -rf ~/tmp/quick/
         # rm -f ~/tmp/$package.log
 
-        # CARGO_LOG=cargo::core::compiler::fingerprint=trace \
+        # Last one wins. Rearrange lines rather than commenting them out.
+        CARGO_LOG=cargo::core::compiler::fingerprint=trace \
         CARGO_LOG=cargo::core::compiler::unit_dependencies=warn,cargo::core::compiler::job_queue=warn,cargo=trace \
+        CARGO_LOG=cargo::util::rustc=debug \
+        RUST_LOG=cargo_quickbuild::archive=warn,cargo_quickbuild=debug \
             cargo quickbuild build # || true # 2>&1 | sed 's/^[[]2022[^ ]*//' > ~/tmp/$package.log || true
     # done
 
     sed -i '' 's/^[[]2022[^ ]*//' ~/tmp/quick/*.stderr
     # code --diff ~/tmp/quick/syn-1*.stderr ~/tmp/quick/serde_derive-1*.stderr
-    code --diff ~/tmp/quick/serde_derive-1*.stderr ~/tmp/quick/cargo-build.stderr
+    # code --diff ~/tmp/quick/serde_derive-1*.stderr ~/tmp/quick/cargo-build.stderr
 )
