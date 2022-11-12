@@ -97,7 +97,7 @@ pub fn tracked_unpack<R: Read>(
 ) -> Result<BTreeMap<PathBuf, FileTime>> {
     let mut file_timestamps = BTreeMap::default();
     // Delay any directory entries until the end (they will be created if needed by
-    // descendants), to ensure that directory permissions do not interfer with descendant
+    // descendants), to ensure that directory permissions do not interfere with descendant
     // extraction.
     let mut directories = Vec::new();
     let mut problem = String::new();
