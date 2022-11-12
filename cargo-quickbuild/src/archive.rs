@@ -30,6 +30,10 @@ pub fn tar_target_dir(
         {
             continue;
         }
+        if dest.starts_with("target/cargo-timings") {
+            log::debug!("skipping timings file: {dest:?}");
+            continue;
+        }
         let mtime = FileTime::from_last_modification_time(&entry.metadata()?);
         match file_timestamps_to_exclude.get(dest) {
             Some(timestamp) if &mtime == timestamp => {
