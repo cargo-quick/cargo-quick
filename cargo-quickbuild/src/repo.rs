@@ -1,4 +1,10 @@
-use std::{fs::File, path::PathBuf};
+use std::{
+    ffi::OsStr,
+    fs::File,
+    path::{Path, PathBuf},
+};
+
+use tar::Archive;
 
 use crate::{
     description::PackageDescription,
@@ -10,7 +16,12 @@ pub struct Repo {
 }
 
 impl Repo {
-    pub fn new(tarball_dir: PathBuf) -> Self {
+    pub fn from_env() -> Self {
+        let tarball_dir = match std::env::var("CARGO_QUICK_TARBALL_DIR") {
+            Ok(path) => PathBuf::from(path),
+            _ => home::home_dir().unwrap().join("tmp/quick"),
+        };
+
         std::fs::create_dir_all(&tarball_dir).unwrap();
         Self { tarball_dir }
     }
@@ -24,12 +35,24 @@ impl Repo {
     }
 
     pub fn write(&self, package: &PackageDescription) -> std::io::Result<File> {
-        let temp_tarball_path = self.tarball_path(package).with_extension("temp.tar");
+        self.write_suffix(package, "temp.tar")
+    }
+
+    pub fn write_stdout(&self, package: &PackageDescription) -> std::io::Result<File> {
+        self.write_suffix(package, "stdout")
+    }
+
+    pub fn write_stderr(&self, package: &PackageDescription) -> std::io::Result<File> {
+        self.write_suffix(package, "stderr")
+    }
+
+    fn write_suffix(&self, package: &PackageDescription, suffix: &str) -> std::io::Result<File> {
+        let path = self.tarball_path(package).with_extension(suffix);
         File::options()
             .write(true)
             .create(true)
             .truncate(true)
-            .open(temp_tarball_path)
+            .open(path)
     }
 
     pub fn commit(&self, package: &PackageDescription, stats: Stats) -> std::io::Result<()> {
@@ -53,5 +76,32 @@ impl Repo {
     fn tarball_path(&self, package: &PackageDescription) -> PathBuf {
         let digest = package.pretty_digest();
         self.tarball_dir.join(format!("{digest}.tar"))
+    }
+
+    // FIXME: save the PackagDescription on disk somewhere, so that we can make this function return
+    // `impl Iterator<Item = PackageDescription>` or something?
+    pub(crate) fn find_file(&self, filename: &Path) -> impl Iterator<Item = PathBuf> {
+        let filename = filename.to_owned();
+
+        walkdir::WalkDir::new(&self.tarball_dir)
+            .into_iter()
+            .filter_map(move |entry| {
+                let entry = entry.unwrap();
+                let path = entry.path();
+                if path.extension() != Some(OsStr::new("tar")) || !path.is_file() {
+                    return None;
+                }
+
+                let mut archive = Archive::new(File::open(&path).unwrap());
+                if archive
+                    .entries()
+                    .unwrap()
+                    .any(|entry| entry.unwrap().path().unwrap() == filename)
+                {
+                    Some(path.to_owned())
+                } else {
+                    None
+                }
+            })
     }
 }

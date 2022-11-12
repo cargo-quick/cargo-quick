@@ -2,19 +2,22 @@
 
 set -euo pipefail
 
+echo 'This script is deprecated. Use `cargo quickbuild repo find $problematic_file` instead'
+
 OTHER_GIT_REPO=${1?USAGE $0 path/to/rust/crate/repo target/problematic/file}
 PROBLEM=${2?USAGE $0 path/to/rust/crate/repo target/problematic/file}
 
-TARBALL_DIR="$HOME/tmp/$(basename "$OTHER_GIT_REPO")"
+CARGO_QUICK_TARBALL_DIR="$HOME/tmp/$(basename "$OTHER_GIT_REPO")"
+export CARGO_QUICK_TARBALL_DIR
 
 # nightly gives backtraces for anyhow errors
 cargo +nightly install --path $HOME/src/cargo-quick/cargo-quickbuild
 
 rm -rf "$OTHER_GIT_REPO/target"
 
-\in "$OTHER_GIT_REPO" cargo quickbuild "$TARBALL_DIR" && exit 0
+\in "$OTHER_GIT_REPO" cargo quickbuild && exit 0
 
-for f in "$TARBALL_DIR"/*.tar ; do
+for f in "$CARGO_QUICK_TARBALL_DIR"/*.tar ; do
     listing=$(~/.nix-profile/bin/tar --list -vv --full-time -f $f "$PROBLEM" 2>/dev/null) \
       || continue
     echo "$f"

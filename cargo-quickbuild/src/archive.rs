@@ -10,7 +10,6 @@ use filetime::FileTime;
 use tar::{Archive, Builder, Entry, EntryType};
 
 use crate::pax::{BuilderExt, PaxBuilder};
-use crate::std_ext::ReadExt;
 
 pub fn tar_target_dir(
     scratch_dir_path: std::path::PathBuf,
@@ -29,6 +28,10 @@ pub fn tar_target_dir(
         if let ".rustc_info.json" | ".cargo-lock" | "CACHEDIR.TAG" =
             path.file_name().unwrap().to_str().unwrap()
         {
+            continue;
+        }
+        if dest.starts_with("target/cargo-timings") {
+            log::debug!("skipping timings file: {dest:?}");
             continue;
         }
         let mtime = FileTime::from_last_modification_time(&entry.metadata()?);
@@ -94,31 +97,65 @@ pub fn tracked_unpack<R: Read>(
 ) -> Result<BTreeMap<PathBuf, FileTime>> {
     let mut file_timestamps = BTreeMap::default();
     // Delay any directory entries until the end (they will be created if needed by
-    // descendants), to ensure that directory permissions do not interfer with descendant
+    // descendants), to ensure that directory permissions do not interfere with descendant
     // extraction.
     let mut directories = Vec::new();
+    let mut problem = String::new();
     for entry in archive.entries()? {
         let mut file = entry.context("reading entry from archive")?;
         if file.header().entry_type() == EntryType::Directory {
             directories.push(file);
         } else {
             let mtime = get_high_res_mtime(&mut file)?;
-            let path = file.path()?.to_path_buf();
-            insert_timestamp(&mut file_timestamps, &path, mtime)?;
-            if path.exists() {
-                let on_disk_mtime =
-                    FileTime::from_last_modification_time(&std::fs::metadata(&path)?);
-                if mtime != on_disk_mtime {
-                    anyhow::bail!(
-                        "timestamps differ for {path:?}: {mtime} != {on_disk_mtime}.\non disk:\n{on_disk}\nfrom tarball:\n{from_tarball}",
-                        on_disk = std::fs::read_to_string(file.path().unwrap()).unwrap(),
-                        from_tarball = file.read_as_string()?
+            let relative_path = file.path()?.to_path_buf();
+            let absolute_path = dst.join(&relative_path);
+
+            insert_timestamp(&mut file_timestamps, &relative_path, mtime)?;
+            if absolute_path.exists() {
+                let mtime_from_disk =
+                    FileTime::from_last_modification_time(&std::fs::metadata(&absolute_path)?);
+                if mtime != mtime_from_disk {
+                    // FIXME: make an extension trait for this conversion
+                    let mtime =
+                        chrono::NaiveDateTime::from_timestamp(mtime.seconds(), mtime.nanoseconds());
+                    let mtime_from_disk = chrono::NaiveDateTime::from_timestamp(
+                        mtime_from_disk.seconds(),
+                        mtime_from_disk.nanoseconds(),
                     );
+                    let now = chrono::Utc::now();
+
+                    let contents_from_disk = std::fs::read(&absolute_path)?;
+                    let mut contents_from_tarball = Vec::new();
+                    file.read_to_end(&mut contents_from_tarball)?;
+
+                    let contents_differ_message = if contents_from_disk == contents_from_tarball {
+                        String::from("contents identical")
+                    } else {
+                        format!(
+                            "contents differ:\n\
+                        on disk:\n{from_disk}\n\
+                        from tarball:\n{from_tarball}",
+                            from_disk = std::str::from_utf8(&contents_from_disk)
+                                .unwrap_or_else(|_| "<<binary file>>"),
+                            from_tarball = std::str::from_utf8(&contents_from_tarball)
+                                .unwrap_or_else(|_| "<<binary file>>"),
+                        )
+                    };
+
+                    problem = format!(
+                        "{mtime} != {mtime_from_disk} for {relative_path:?} ({absolute_path:?}):\n\
+                        (mtime != on_disk_mtime. now = {now})\n\
+                        {contents_differ_message}",
+                    );
+                    eprintln!("{problem}");
                 }
             }
             file.unpack_in(dst)?;
-            filetime::set_file_times(dst.join(file.path()?), mtime, mtime)?;
+            filetime::set_file_times(&absolute_path, mtime, mtime)?;
         }
+    }
+    if !problem.is_empty() {
+        anyhow::bail!("{problem}")
     }
     for mut dir in directories {
         let path = dir.path()?.to_path_buf();
@@ -130,7 +167,7 @@ pub fn tracked_unpack<R: Read>(
     Ok(file_timestamps)
 }
 
-fn get_high_res_mtime<R: Read>(file: &mut Entry<R>) -> Result<FileTime, anyhow::Error> {
+pub(crate) fn get_high_res_mtime<R: Read>(file: &mut Entry<R>) -> Result<FileTime, anyhow::Error> {
     let path = file.path().unwrap().into_owned();
     let low_res_mtime = file.header().mtime().unwrap();
     let mtime = file

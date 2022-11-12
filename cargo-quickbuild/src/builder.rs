@@ -1,33 +1,33 @@
 use std::collections::BTreeMap;
-use std::ffi::OsStr;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
-use std::process::Command;
 
 use anyhow::Context;
 use anyhow::Result;
 use cargo::core::PackageId;
 use filetime::FileTime;
 use tar::Archive;
-use tempdir::TempDir;
 
 use crate::archive::tar_target_dir;
 use crate::archive::tracked_unpack;
-
 use crate::description::PackageDescription;
+use crate::quick_resolve::BuildFor;
 use crate::quick_resolve::QuickResolve;
 use crate::repo::Repo;
-
 use crate::stats::Stats;
-use crate::std_ext::ExitStatusExt;
+use crate::util::command::command;
+use crate::util::command::CommandExt;
+use crate::util::fixed_tempdir::FixedTempDir as TempDir;
 
 pub fn build_tarball<'cfg, 'a>(
     resolve: &QuickResolve<'cfg, 'a>,
     repo: &Repo,
     package_id: PackageId,
+    build_for: BuildFor,
 ) -> Result<()> {
     let tempdir = TempDir::new("cargo-quickbuild-scratchpad")?;
+    assert!(tempdir.path().ends_with("cargo-quickbuild-scratchpad"));
     let scratch_dir = tempdir.path().join("cargo-quickbuild-scratchpad");
 
     // FIXME: this stats tracking is making it awkward to refactor this method into multiple bits.
@@ -38,16 +38,21 @@ pub fn build_tarball<'cfg, 'a>(
     cargo_init(&scratch_dir)?;
     stats.init_done();
 
-    let file_timestamps = unpack_tarballs_of_deps(resolve, repo, package_id, &scratch_dir)?;
+    let file_timestamps =
+        unpack_tarballs_of_deps(resolve, repo, package_id, build_for, &scratch_dir)?;
     stats.untar_done();
 
-    let description = PackageDescription::new(resolve, package_id);
-    add_deps_to_manifest(&scratch_dir, &description)?;
+    let description = PackageDescription::new(resolve, package_id, build_for);
+    overwrite_manifest(&scratch_dir, &description)?;
 
-    run_cargo_build(&scratch_dir)?;
+    run_cargo_build(
+        &scratch_dir,
+        repo.write_stdout(&description)?,
+        repo.write_stderr(&description)?,
+    )?;
     stats.build_done();
 
-    let description = PackageDescription::new(resolve, package_id);
+    let description = PackageDescription::new(resolve, package_id, build_for);
     let file = repo.write(&description)?;
     tar_target_dir(scratch_dir, file, &file_timestamps)?;
     stats.tar_done();
@@ -60,8 +65,7 @@ pub fn build_tarball<'cfg, 'a>(
 pub fn cargo_init(scratch_dir: &std::path::PathBuf) -> Result<()> {
     command(["cargo", "init", "--vcs=none"])
         .arg(scratch_dir)
-        .status()?
-        .exit_ok_ext()?;
+        .try_execute()?;
 
     Ok(())
 }
@@ -70,15 +74,17 @@ pub fn unpack_tarballs_of_deps<'cfg, 'a>(
     resolve: &QuickResolve<'cfg, 'a>,
     repo: &Repo,
     package_id: PackageId,
+    build_for: BuildFor,
     scratch_dir: &Path,
 ) -> Result<BTreeMap<PathBuf, FileTime>> {
     let mut file_timestamps = BTreeMap::default();
-    for dep in resolve
-        .recursive_deps_including_self(package_id)
+    for (dep, build_for) in resolve
+        .recursive_deps_including_self(package_id, build_for)
         .into_iter()
-        .filter(|id| id != &package_id)
+        .filter(|(id, _)| id != &package_id)
     {
-        let description = PackageDescription::new(resolve, dep);
+        let description = PackageDescription::new(resolve, dep, build_for);
+        log::info!("unpacking tarball for {}", description.pretty_digest());
         let file = repo
             .read(&description)
             .with_context(|| format!("reading description {description:?} for {package_id:?}"))?;
@@ -92,14 +98,14 @@ pub fn unpack_tarballs_of_deps<'cfg, 'a>(
     Ok(file_timestamps)
 }
 
-fn add_deps_to_manifest(
+fn overwrite_manifest(
     scratch_dir: &Path,
     description: &PackageDescription,
 ) -> Result<(), anyhow::Error> {
     let cargo_toml_path = scratch_dir.join("Cargo.toml");
     let mut cargo_toml = std::fs::OpenOptions::new()
         .write(true)
-        .append(true)
+        .truncate(true)
         .open(&cargo_toml_path)?;
     write!(cargo_toml, "{}", description.cargo_toml_deps())?;
     cargo_toml.flush()?;
@@ -107,16 +113,14 @@ fn add_deps_to_manifest(
     Ok(())
 }
 
-pub fn run_cargo_build(scratch_dir: &std::path::PathBuf) -> Result<()> {
-    // command(["cargo", "tree", "-vv", "--no-dedupe", "--edges=all"])
-    //     .current_dir(scratch_dir)
-    //     .status()?
-    //     .exit_ok_ext()?;
-
-    command(["cargo", "build", "--jobs=1", "--offline"])
+pub fn run_cargo_build(
+    scratch_dir: &std::path::PathBuf,
+    stdout: impl Write + Send,
+    stderr: impl Write + Send,
+) -> Result<()> {
+    command(["cargo", "build", "--jobs=1"])
         .current_dir(scratch_dir)
-        .status()?
-        .exit_ok_ext()?;
+        .try_execute_tee(stdout, stderr)?;
 
     command([
         "cargo",
@@ -126,18 +130,7 @@ pub fn run_cargo_build(scratch_dir: &std::path::PathBuf) -> Result<()> {
         "cargo-quickbuild-scratchpad",
     ])
     .current_dir(scratch_dir)
-    .status()?
-    .exit_ok_ext()?;
+    .try_execute()?;
 
     Ok(())
-}
-
-pub fn command(args: impl IntoIterator<Item = impl AsRef<OsStr>>) -> Command {
-    let mut args = args.into_iter();
-    let mut command = Command::new(
-        args.next()
-            .expect("command() takes command and args (at least one item)"),
-    );
-    command.args(args);
-    command
 }
