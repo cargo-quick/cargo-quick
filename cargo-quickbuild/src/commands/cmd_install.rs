@@ -75,6 +75,8 @@ pub fn exec(args: &[String]) -> anyhow::Result<()> {
         )?;
     }
 
+    // FIXME: this doesn't end up building with the same profile as `run_cargo_build()`, so it
+    // duplicates all of the work.
     command([
         "cargo",
         "install",
