@@ -1,17 +1,16 @@
 //! Code for building the graph used by `cargo tree`.
-// Vendored from cargo/ops/tree/graph.rs and pruned.
 
-use std::collections::{HashMap, HashSet};
-
-use cargo::core::compiler::{CompileKind, RustcTargetData};
-use cargo::core::dependency::DepKind;
-use cargo::core::resolver::features::{CliFeatures, FeaturesFor, ResolvedFeatures};
-use cargo::core::resolver::Resolve;
-use cargo::core::{FeatureMap, FeatureValue, Package, PackageId, PackageIdSpec, Workspace};
-use cargo::util::interning::InternedString;
-use cargo::util::CargoResult;
+use itertools::Itertools;
 
 use super::TreeOptions;
+use cargo::core::compiler::{BuildContext, CompileKind, Unit};
+use cargo::core::dependency::DepKind;
+use cargo::core::resolver::features::CliFeatures;
+use cargo::core::resolver::Resolve;
+use cargo::core::{FeatureMap, FeatureValue, Package, PackageId, PackageIdSpec};
+use cargo::util::interning::InternedString;
+use cargo::util::CargoResult;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum Node {
@@ -27,6 +26,20 @@ pub enum Node {
         /// Name of the feature.
         name: InternedString,
     },
+}
+
+impl Node {
+    /// Make a Node representing the Node::Package of a Unit.
+    ///
+    /// Note: There is a many:1 relationship between Unit and Package,
+    /// because some units are build.rs builds or build.rs invocations.
+    fn package_for_unit(unit: &Unit) -> Node {
+        Node::Package {
+            package_id: unit.pkg.package_id(),
+            features: unit.features.clone(),
+            kind: unit.kind,
+        }
+    }
 }
 
 /// The kind of edge, for separating dependencies into different sections.
@@ -52,7 +65,7 @@ impl Edges {
         Edges(HashMap::new())
     }
 
-    /// Adds an edge pointing to the given node.
+    /// Adds an edge pointing to the given node. This is idempotent.
     fn add_edge(&mut self, kind: EdgeKind, index: usize) {
         let indexes = self.0.entry(kind).or_default();
         if !indexes.contains(&index) {
@@ -93,6 +106,15 @@ impl<'a> Graph<'a> {
             package_map,
             cli_features: HashSet::new(),
             dep_name_map: HashMap::new(),
+        }
+    }
+
+    /// Adds a new node to the graph if it doesn't exist, returning its index.
+    fn add_node_idempotently(&mut self, node: Node) -> usize {
+        if let Some(index) = self.index.get(&node) {
+            *index
+        } else {
+            self.add_node(node)
         }
     }
 
@@ -138,7 +160,9 @@ impl<'a> Graph<'a> {
     }
 
     pub fn package_for_id(&self, id: PackageId) -> &Package {
-        self.package_map[&id]
+        self.package_map
+            .get(&id)
+            .unwrap_or_else(|| panic!("could not find {id:#?} in {:#?}", self.package_map))
     }
 
     pub fn package_id_for_index(&self, index: usize) -> PackageId {
@@ -149,184 +173,147 @@ impl<'a> Graph<'a> {
     }
 }
 
-/// Builds the graph.
-#[allow(clippy::too_many_arguments)]
-pub fn build<'a>(
-    ws: &Workspace<'_>,
+/// Builds the graph by iterating over the UnitDeps of a BuildContext.
+///
+/// This is useful for finding bugs in the implementation of `build()`, below.
+pub fn from_bcx<'a, 'cfg>(
+    bcx: BuildContext<'a, 'cfg>,
     resolve: &Resolve,
-    resolved_features: &ResolvedFeatures,
+    // FIXME: it feels like it would be easy for specs and cli_features to get out-of-sync with
+    // what bcx has been configured with. Either make that structurally impossible or add an assert.
     specs: &[PackageIdSpec],
     cli_features: &CliFeatures,
-    target_data: &RustcTargetData<'_>,
-    requested_kinds: &[CompileKind],
     package_map: HashMap<PackageId, &'a Package>,
     opts: &TreeOptions,
 ) -> CargoResult<Graph<'a>> {
     let mut graph = Graph::new(package_map);
-    let mut members_with_features = ws.members_with_features(specs, cli_features)?;
-    members_with_features.sort_unstable_by_key(|e| e.0.package_id());
-    for (member, cli_features) in members_with_features {
-        let member_id = member.package_id();
-        let features_for = FeaturesFor::from_for_host(member.proc_macro());
-        for kind in requested_kinds {
-            let member_index = add_pkg(
-                &mut graph,
-                resolve,
-                resolved_features,
-                member_id,
-                features_for,
-                target_data,
-                *kind,
-                opts,
+
+    // First pass: add all of the nodes for Packages
+    for unit in bcx.unit_graph.keys().sorted() {
+        let node = Node::package_for_unit(unit);
+        // There may be multiple units for the same package if build-scripts are involved.
+        graph.add_node_idempotently(node);
+
+        // FIXME: I quite like the idea of adding all of the nodes in the first pass, but adding
+        // the full set of features doesn't seem to be possible here. Maybe it's better to think of
+        // features as more like a kind of Edge, and do it in the second loop.
+        // if opts.graph_features {
+        //     for name in unit.features.iter().copied() {
+        //         let node = Node::Feature { node_index, name };
+        //         graph.add_node_idempotently(node);
+        //     }
+        // }
+    }
+
+    // second pass: add all of the edges (and `Node::Feature`s if that's what's asked for)
+    for (unit, deps) in bcx.unit_graph.iter() {
+        let node = Node::package_for_unit(unit);
+        let from_index = *graph.index.get(&node).unwrap();
+
+        for dep in deps {
+            if dep.unit.pkg.package_id() == unit.pkg.package_id() {
+                // Probably a build script that's part of the same package. Skip it.
+                continue;
+            }
+            let dep_node = Node::package_for_unit(&dep.unit);
+            let dep_index = *graph.index.get(&dep_node).unwrap();
+
+            // FIXME: This is really ugly. It's also quadratic in `deps.len()`, but `deps` is only
+            // the direct dependencies of `unit`, so the ugliness is more important.
+            // I think I want to `zip(sorted(deps), sorted(resolve.deps(unit)))` and then assert
+            // that the ids line up, with nothing left over.
+            let mut found = false;
+            let mut added = false;
+            for (_, dep_set) in resolve
+                .deps(unit.pkg.package_id())
+                .filter(|(dep_id, _dep_set)| dep_id == &dep.unit.pkg.package_id())
+            {
+                found = true;
+                assert!(
+                    !dep_set.is_empty(),
+                    "resolver should be able to tell us why {unit:?} depends on {dep:?}"
+                );
+
+                // FIXME: think of better names for dep and link
+                // (most code needs to have `dep` renamed to `link` when copy-pasting)
+                for link in dep_set {
+                    if opts.graph_features {
+                        if link.uses_default_features() {
+                            add_feature(
+                                &mut graph,
+                                InternedString::new("default"),
+                                Some(from_index),
+                                dep_index,
+                                EdgeKind::Dep(link.kind()),
+                            );
+                            added = true;
+                        }
+                        for feature in link.features() {
+                            // FIXME: is add_feature() idempotent?
+                            add_feature(
+                                &mut graph,
+                                *feature,
+                                Some(from_index),
+                                dep_index,
+                                EdgeKind::Dep(link.kind()),
+                            );
+                            added = true;
+                        }
+                        // FIXME: do this in its own pass or something?
+                        graph
+                            .dep_name_map
+                            .entry(from_index)
+                            .or_default()
+                            .entry(link.name_in_toml())
+                            .or_default()
+                            .insert((dep_index, link.is_optional()));
+                    } else {
+                        let kind = EdgeKind::Dep(link.kind());
+                        if opts.edge_kinds.contains(&kind) {
+                            // FIXME: if it's not possible to get from unit to dep with this kind
+                            // of edge then maybe we shouldn't add it? Maybe this would help with
+                            // the tree::host_dep_feature test? Not sure how to determine this though.
+                            graph.edges[from_index].add_edge(kind, dep_index);
+                        }
+                    }
+                }
+            }
+
+            assert!(
+                found,
+                "resolver should have a record of {unit:?} depending on {dep:?}"
             );
-            if opts.graph_features {
-                let fmap = resolve.summary(member_id).features();
+            if opts.graph_features && !added {
+                // HACK: if dep was added with default-features = false and no other features then
+                // it won't be linked up yet. Fudge a direct link in there so that we can represent
+                // it on the graph.
+                graph.edges[from_index].add_edge(EdgeKind::Dep(DepKind::Normal), dep_index);
+            }
+        }
+    }
+
+    if opts.graph_features {
+        let mut members_with_features = bcx.ws.members_with_features(specs, cli_features)?;
+        members_with_features.sort_unstable_by_key(|e| e.0.package_id());
+        for (member, cli_features) in members_with_features {
+            // This package might be built for both host and target.
+            let member_indexes = graph.indexes_from_ids(&[member.package_id()]);
+            assert!(!member_indexes.is_empty());
+
+            // FIXME: if the package shows up in both host and `target`, it may be possible for the
+            // features to be different (this may not even be possible for workspace members in the
+            // current resolver - I've not checked).
+            //
+            // We might be better off querying the UnitGraph again or something?
+            let fmap = resolve.summary(member.package_id()).features();
+            for member_index in member_indexes.into_iter() {
                 add_cli_features(&mut graph, member_index, &cli_features, fmap);
             }
         }
-    }
-    if opts.graph_features {
-        add_internal_features(&mut graph, resolve);
+
+        add_internal_features(&mut graph, resolve)
     }
     Ok(graph)
-}
-
-/// Adds a single package node (if it does not already exist).
-///
-/// This will also recursively add all of its dependencies.
-///
-/// Returns the index to the package node.
-#[allow(clippy::too_many_arguments)]
-fn add_pkg(
-    graph: &mut Graph<'_>,
-    resolve: &Resolve,
-    resolved_features: &ResolvedFeatures,
-    package_id: PackageId,
-    features_for: FeaturesFor,
-    target_data: &RustcTargetData<'_>,
-    requested_kind: CompileKind,
-    opts: &TreeOptions,
-) -> usize {
-    let node_features = resolved_features.activated_features(package_id, features_for);
-    let node_kind = match features_for {
-        FeaturesFor::HostDep => CompileKind::Host,
-        FeaturesFor::NormalOrDev => requested_kind,
-    };
-    let node = Node::Package {
-        package_id,
-        features: node_features,
-        kind: node_kind,
-    };
-    if let Some(idx) = graph.index.get(&node) {
-        return *idx;
-    }
-    let from_index = graph.add_node(node);
-    // Compute the dep name map which is later used for foo/bar feature lookups.
-    let mut dep_name_map: HashMap<InternedString, HashSet<(usize, bool)>> = HashMap::new();
-    let mut deps: Vec<_> = resolve.deps(package_id).collect();
-    deps.sort_unstable_by_key(|(dep_id, _)| *dep_id);
-    let show_all_targets = opts.target == super::Target::All;
-    for (dep_id, deps) in deps {
-        let mut deps: Vec<_> = deps
-            .iter()
-            // This filter is *similar* to the one found in `unit_dependencies::compute_deps`.
-            // Try to keep them in sync!
-            .filter(|dep| {
-                let kind = match (node_kind, dep.kind()) {
-                    (CompileKind::Host, _) => CompileKind::Host,
-                    (_, DepKind::Build) => CompileKind::Host,
-                    (_, DepKind::Normal) => node_kind,
-                    (_, DepKind::Development) => node_kind,
-                };
-                // Filter out inactivated targets.
-                if !show_all_targets && !target_data.dep_platform_activated(dep, kind) {
-                    return false;
-                }
-                // Filter out dev-dependencies if requested.
-                if !opts.edge_kinds.contains(&EdgeKind::Dep(dep.kind())) {
-                    return false;
-                }
-                if dep.is_optional() {
-                    // If the new feature resolver does not enable this
-                    // optional dep, then don't use it.
-                    if !resolved_features.is_dep_activated(
-                        package_id,
-                        features_for,
-                        dep.name_in_toml(),
-                    ) {
-                        return false;
-                    }
-                }
-                true
-            })
-            .collect();
-
-        // This dependency is eliminated from the dependency tree under
-        // the current target and feature set.
-        if deps.is_empty() {
-            continue;
-        }
-
-        deps.sort_unstable_by_key(|dep| dep.name_in_toml());
-        let dep_pkg = graph.package_map[&dep_id];
-
-        for dep in deps {
-            let dep_features_for = if dep.is_build() || dep_pkg.proc_macro() {
-                FeaturesFor::HostDep
-            } else {
-                features_for
-            };
-            let dep_index = add_pkg(
-                graph,
-                resolve,
-                resolved_features,
-                dep_id,
-                dep_features_for,
-                target_data,
-                requested_kind,
-                opts,
-            );
-            if opts.graph_features {
-                // Add the dependency node with feature nodes in-between.
-                dep_name_map
-                    .entry(dep.name_in_toml())
-                    .or_default()
-                    .insert((dep_index, dep.is_optional()));
-                if dep.uses_default_features() {
-                    add_feature(
-                        graph,
-                        InternedString::new("default"),
-                        Some(from_index),
-                        dep_index,
-                        EdgeKind::Dep(dep.kind()),
-                    );
-                }
-                for feature in dep.features().iter() {
-                    add_feature(
-                        graph,
-                        *feature,
-                        Some(from_index),
-                        dep_index,
-                        EdgeKind::Dep(dep.kind()),
-                    );
-                }
-                if !dep.uses_default_features() && dep.features().is_empty() {
-                    // No features, use a direct connection.
-                    graph.edges[from_index].add_edge(EdgeKind::Dep(dep.kind()), dep_index);
-                }
-            } else {
-                graph.edges[from_index].add_edge(EdgeKind::Dep(dep.kind()), dep_index);
-            }
-        }
-    }
-    if opts.graph_features {
-        assert!(graph
-            .dep_name_map
-            .insert(from_index, dep_name_map)
-            .is_none());
-    }
-
-    from_index
 }
 
 /// Adds a feature node between two nodes.
@@ -403,7 +390,11 @@ fn add_cli_features(
                 dep_feature,
                 weak,
             } => {
-                let dep_connections = match graph.dep_name_map[&package_index].get(&dep_name) {
+                let dep_connections = match graph
+                    .dep_name_map
+                    .get(&package_index)
+                    .and_then(|h| h.get(&dep_name))
+                {
                     // Clone to deal with immutable borrow of `graph`. :(
                     Some(dep_connections) => dep_connections.clone(),
                     None => {

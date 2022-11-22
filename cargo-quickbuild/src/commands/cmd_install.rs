@@ -61,7 +61,7 @@ pub fn exec(args: &[String]) -> anyhow::Result<()> {
 
         let interner = UnitInterner::new();
         let workspace_resolve = create_resolve(&ws, &options, &interner)?;
-        let resolve = create_quick_resolve(&ws, &options, &workspace_resolve)?;
+        let resolve = create_quick_resolve(&ws, &options, &workspace_resolve, &interner)?;
 
         let repo = Repo::from_env();
         build_missing_packages(&resolve, &repo, package.package_id())?;

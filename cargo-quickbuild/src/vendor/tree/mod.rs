@@ -48,7 +48,7 @@ pub struct TreeOptions {
 pub enum Target {
     Host,
     // Specific(Vec<String>),
-    All,
+    // All,
 }
 
 pub enum Charset {
