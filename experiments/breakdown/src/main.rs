@@ -181,7 +181,7 @@ mod test {
         // I'm not convinced that it's stable.
         assert_eq!(
             hash_packages(&packages),
-            "d545a9f04900c95eabe1bfa8ce914be2d692e64e694d08d243109945b4db399d"
+            "f090d4356ee809ef476e7f612352ba06bf6b9a41f88df20f67ad14cdc67b7ada"
         );
     }
 

@@ -206,7 +206,7 @@ mod tests {
     use std::collections::HashMap;
     use std::path::Path;
 
-    use cargo::core::compiler::{RustcTargetData, UnitInterner};
+    use cargo::core::compiler::UnitInterner;
     use cargo::core::Package;
     use cargo::util::command_prelude::CompileMode;
     use cargo::util::interning::InternedString;
@@ -227,8 +227,6 @@ mod tests {
 
         let interner = UnitInterner::new();
         let workspace_resolve = create_resolve(&ws, &options, &interner)?;
-        let requested_kinds = &options.build_config.requested_kinds;
-        let target_data = RustcTargetData::new(&ws, requested_kinds)?;
         let package_map: HashMap<PackageId, &Package> = workspace_resolve
             .pkg_set
             .packages()
@@ -256,18 +254,16 @@ mod tests {
             max_display_depth: Default::default(),
             no_proc_macro: Default::default(),
         };
-        let graph = crate::vendor::tree::graph::build(
-            &ws,
+        let bcx = create_bcx(&ws, &options, &interner)?;
+
+        let graph = crate::vendor::tree::graph::from_bcx(
+            bcx,
             &workspace_resolve.targeted_resolve,
-            &workspace_resolve.resolved_features,
             &options.spec.to_package_id_specs(&ws)?,
-            &options.cli_features,
-            &target_data,
-            requested_kinds,
+            &opts.cli_features,
             package_map,
             &opts,
-        )
-        .unwrap();
+        )?;
         let resolve = QuickResolve {
             ws: &ws,
             workspace_resolve: &workspace_resolve,

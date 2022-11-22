@@ -28,3 +28,7 @@ serde_json = "1.0.81"
 tar = "0.4.38"
 tempdir = "0.3.7"
 walkdir = "2.3.2"
+
+[dev-dependencies]
+cargo-test-support = { path = "../../cargo/crates/cargo-test-support/" }
+cargo-test-macro = { path = "../../cargo/crates/cargo-test-macro/" }
