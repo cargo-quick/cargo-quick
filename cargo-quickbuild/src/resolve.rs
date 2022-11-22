@@ -25,7 +25,6 @@ pub fn create_resolve<'a, 'cfg>(
         target_rustdoc_args: _,
         target_rustc_args: _,
         target_rustc_crate_types: _,
-        local_rustdoc_args: _,
         rustdoc_document_private_items: _,
         honor_rust_version: _,
     } = *options;

@@ -34,6 +34,7 @@ impl PackageDescription {
         let build_for = match self.build_for.0 {
             FeaturesFor::NormalOrDev => "target",
             FeaturesFor::HostDep => "host",
+            FeaturesFor::ArtifactDep(_) => todo!(),
         };
 
         format!("{package_name}-{package_version}-{build_for}-{digest}")

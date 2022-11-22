@@ -33,6 +33,8 @@ impl PartialOrd for BuildFor {
             (FeaturesFor::NormalOrDev, FeaturesFor::NormalOrDev) => Ordering::Equal,
             (FeaturesFor::NormalOrDev, FeaturesFor::HostDep) => Ordering::Less,
             (FeaturesFor::HostDep, FeaturesFor::NormalOrDev) => Ordering::Greater,
+            (FeaturesFor::ArtifactDep(_), _) => todo!(),
+            (_, FeaturesFor::ArtifactDep(_)) => todo!(),
         })
     }
 }
@@ -109,6 +111,7 @@ impl<'cfg, 'a> QuickResolve<'cfg, 'a> {
                                 }
                                 // once a HostDep, always a HostDep
                                 (FeaturesFor::HostDep, _) => BuildFor(FeaturesFor::HostDep),
+                                (FeaturesFor::ArtifactDep(_), _) => todo!(),
                             };
                             layer.insert((package_id, new_build_for));
                         }
