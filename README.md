@@ -1,3 +1,11 @@
+# Archived
+
+I still think that the ideas behind quickbuild are good, but I didn't manage to get as far as I would like during the time that I allowed myself. I am now not using Rust day-to-day, so I don't feel the pain of slow rust builds as keenly.
+
+If anyone would like to take over the `cargo-quick` GitHub org, please get in contact.
+
+I am also stepping down from cargo-quickinstall. See https://github.com/alsuren/cargo-quickinstall/issues/104 for details.
+
 # `cargo quick`
 
 ⚠️ Warning: Currently Vapourware
